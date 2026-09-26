@@ -1,0 +1,167 @@
+"use server";
+
+import { randomBytes } from "node:crypto";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { db } from "@/lib/db";
+import { ActionError, getCurrentUser } from "@/lib/session";
+import { toActionState, type ActionState } from "@/lib/action-state";
+import { identityFingerprint, loadUidaiPublicKey, namesMatch, parseSecureQr } from "@/lib/aadhaar";
+import { ageBand, ageOn, isEligibleBand } from "@/lib/rules";
+import { notify, audit } from "@/lib/notify";
+
+async function signedIn() {
+  const user = await getCurrentUser();
+  if (!user) throw new ActionError("Please sign in first.");
+  return user;
+}
+
+const onboardingSchema = z.object({
+  dob: z.string().optional(),
+  city: z.string().trim().min(2, "Enter your city.").max(60),
+  pincode: z.string().trim().regex(/^\d{6}$/, "Enter a 6-digit pincode."),
+  pledge: z.literal("on", { message: "Please accept the community pledge." }),
+});
+
+export async function completeOnboarding(_: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const user = await signedIn();
+    const parsed = onboardingSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+    let dob = user.dob;
+    if (!dob) {
+      const d = parsed.data.dob ? new Date(parsed.data.dob + "T00:00:00Z") : null;
+      if (!d || Number.isNaN(d.getTime())) return { error: "Enter your date of birth." };
+      dob = d;
+    }
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        dob,
+        dobSource: user.dobSource ?? "SELF",
+        city: parsed.data.city,
+        pincode: parsed.data.pincode,
+        onboardedAt: new Date(),
+      },
+    });
+    if (!isEligibleBand(ageBand(ageOn(dob)))) redirect("/not-eligible");
+  } catch (e) {
+    return toActionState(e);
+  }
+  redirect("/");
+}
+
+export async function verifyAadhaar(_: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const user = await signedIn();
+    if (user.aadhaarVerifiedAt) return { ok: "You're already verified." };
+    const qr = String(formData.get("qr") ?? "");
+    if (!qr) return { error: "Scan or upload your Aadhaar card first." };
+
+    const key = loadUidaiPublicKey(process.env.UIDAI_PUBLIC_KEY_PEM);
+    if (!key && process.env.AADHAAR_ALLOW_UNSIGNED !== "true") {
+      return { error: "Verification is temporarily unavailable. Please try again later." };
+    }
+    const id = parseSecureQr(qr, key);
+
+    if (!namesMatch(id.name, user.name)) {
+      return { error: "The name on this Aadhaar doesn't match your Google account name. Please use your own card." };
+    }
+    const hash = identityFingerprint(id, process.env.AADHAAR_HASH_SECRET ?? process.env.AUTH_SECRET!);
+    const owner = await db.user.findUnique({ where: { aadhaarHash: hash }, select: { id: true } });
+    if (owner && owner.id !== user.id) {
+      return { error: "This Aadhaar is already linked to another Cloro account. Each person can have one account." };
+    }
+
+    const band = ageBand(ageOn(id.dob));
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        aadhaarVerifiedAt: new Date(),
+        aadhaarName: id.name,
+        aadhaarLast4: id.last4,
+        aadhaarHash: hash,
+        dob: id.dob, // Aadhaar is the source of truth for age
+        dobSource: "AADHAAR",
+      },
+    });
+    if (!isEligibleBand(band)) redirect("/not-eligible");
+    if (band === "MINOR") redirect("/guardian");
+    return { ok: "Verified! You can now list, bid and chat." };
+  } catch (e) {
+    return toActionState(e);
+  }
+}
+
+export async function createGuardianRequest(): Promise<ActionState> {
+  try {
+    const user = await signedIn();
+    const existing = await db.guardianRequest.findFirst({ where: { minorId: user.id, status: "PENDING" } });
+    if (!existing) {
+      await db.guardianRequest.create({ data: { minorId: user.id, token: randomBytes(24).toString("base64url") } });
+    }
+    revalidatePath("/guardian");
+    return { ok: "Link created." };
+  } catch (e) {
+    return toActionState(e);
+  }
+}
+
+export async function decideGuardianRequest(_: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const guardian = await signedIn();
+    const token = String(formData.get("token"));
+    const decision = formData.get("decision") === "approve" ? "APPROVED" : "DECLINED";
+    const relationship = String(formData.get("relationship") ?? "").trim();
+    const req = await db.guardianRequest.findUnique({ where: { token } });
+    if (!req || req.status !== "PENDING") return { error: "This link is no longer valid." };
+    if (req.minorId === guardian.id) return { error: "The approval must come from your parent or guardian's own Google account." };
+    if (guardian.dob && ageOn(guardian.dob) < 18) return { error: "A guardian must be an adult." };
+    if (decision === "APPROVED" && !relationship) return { error: "Tell us how you're related." };
+    if (formData.get("agree") !== "on" && decision === "APPROVED") return { error: "Please confirm the statement." };
+
+    await db.$transaction([
+      db.guardianRequest.update({
+        where: { id: req.id },
+        data: { status: decision, guardianId: guardian.id, relationship, decidedAt: new Date() },
+      }),
+      ...(decision === "APPROVED"
+        ? [db.user.update({ where: { id: req.minorId }, data: { guardianApprovedAt: new Date(), guardianEmail: guardian.email } })]
+        : []),
+    ]);
+    await notify(
+      req.minorId,
+      decision === "APPROVED" ? "Your guardian approved your account. You can start trading!" : "Your guardian declined the request.",
+      "/dashboard",
+    );
+    return { ok: decision === "APPROVED" ? "Thank you — the account is approved." : "Request declined." };
+  } catch (e) {
+    return toActionState(e);
+  }
+}
+
+export async function markNotificationsRead() {
+  const user = await getCurrentUser();
+  if (!user) return;
+  await db.notification.updateMany({ where: { userId: user.id, read: false }, data: { read: true } });
+  revalidatePath("/", "layout");
+}
+
+export async function toggleBlock(_: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const user = await signedIn();
+    const targetId = String(formData.get("userId"));
+    if (targetId === user.id) return { error: "You can't block yourself." };
+    const key = { blockerId_blockedId: { blockerId: user.id, blockedId: targetId } };
+    const existing = await db.block.findUnique({ where: key });
+    if (existing) await db.block.delete({ where: key });
+    else await db.block.create({ data: { blockerId: user.id, blockedId: targetId } });
+    await audit(user.id, existing ? "unblock" : "block", targetId);
+    revalidatePath("/", "layout");
+    return { ok: existing ? "Unblocked." : "Blocked. They can no longer message you." };
+  } catch (e) {
+    return toActionState(e);
+  }
+}

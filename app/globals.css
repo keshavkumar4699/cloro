@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0f0e0c;
+  --color-ink-soft: #2a2825;
+  --color-ivory: #f6f2ea;
+  --color-paper: #fbf9f5;
+  --color-gold: #a8844a;
+  --color-gold-soft: #d9c49c;
+  --color-muted: #6f695f;
+  --color-line: #e3dccf;
+  --font-serif: var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
+  --font-sans: var(--font-inter), "Inter", system-ui, sans-serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+.serif {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.4rem;
+    font-size: 0.78rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+    transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+    cursor: pointer;
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--color-ink);
+    color: var(--color-ivory);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-ink-soft);
+  }
+  .btn-gold {
+    background: var(--color-gold);
+    color: #fff;
+  }
+  .btn-gold:hover:not(:disabled) {
+    background: #8f6f3b;
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--color-ink);
+    border-color: var(--color-ink);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--color-ink);
+    color: var(--color-ivory);
+  }
+  .btn-danger {
+    background: transparent;
+    color: #8a1c1c;
+    border-color: #8a1c1c;
+  }
+  .input {
+    width: 100%;
+    background: #fff;
+    border: 1px solid var(--color-line);
+    padding: 0.65rem 0.8rem;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input:focus {
+    border-color: var(--color-gold);
+  }
+  .label {
+    display: block;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    margin-bottom: 0.4rem;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid var(--color-line);
+  }
+  .notice {
+    border-left: 2px solid var(--color-gold);
+    background: var(--color-ivory);
+    padding: 0.85rem 1rem;
+    font-size: 0.9rem;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.55rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border: 1px solid var(--color-line);
+    color: var(--color-ink-soft);
+    background: var(--color-paper);
+  }
+  .badge-gold {
+    border-color: var(--color-gold-soft);
+    color: var(--color-gold);
+  }
+  .link {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--color-gold-soft);
+  }
+  .link:hover {
+    text-decoration-color: var(--color-gold);
+  }
+}
+
+.fade-in {
+  animation: fade 0.6s ease both;
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-in {
+    animation: none;
+  }
+}
