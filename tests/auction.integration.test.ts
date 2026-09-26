@@ -82,6 +82,18 @@ describe("auction engine (database)", () => {
     expect(await db.deal.count({ where: { listingId: l.id } })).toBe(0);
   });
 
+  it("skips a banned top bidder and offers the item to the next eligible one", async () => {
+    const l = await makeListing();
+    await placeBid(l.id, bidders[2], 500);
+    await placeBid(l.id, bidders[3], 600);
+    await db.user.update({ where: { id: bidders[3].id }, data: { status: "BANNED" } });
+    await db.listing.update({ where: { id: l.id }, data: { endsAt: new Date(Date.now() - 1000) } });
+    await settleListing(l.id);
+    const deal = await db.deal.findFirstOrThrow({ where: { listingId: l.id } });
+    expect(deal).toMatchObject({ buyerId: bidders[2].id, amount: 500, rank: 2 });
+    await db.user.update({ where: { id: bidders[3].id }, data: { status: "ACTIVE" } });
+  });
+
   it("marks lots with no bids as unsold", async () => {
     const l = await makeListing({ endsAt: new Date(Date.now() - 1000) });
     await settleListing(l.id);

@@ -17,21 +17,21 @@ const FAQ: [string, string][] = [
 
 export default function HelpPage() {
   return (
-    <div className="mx-auto max-w-3xl px-6 py-14">
+    <div className="mx-auto max-w-3xl px-4 md:px-6 py-8 md:py-12">
       <p className="eyebrow">Help centre</p>
-      <h1 className="text-5xl mt-2">How Cloro works</h1>
+      <h1 className="text-4xl md:text-5xl mt-2">How Cloro works</h1>
 
-      <section className="mt-12 space-y-4">
+      <section className="mt-8 space-y-3">
         {FAQ.map(([q, a]) => (
-          <details key={q} className="border-b border-line pb-4">
-            <summary className="serif text-2xl cursor-pointer">{q}</summary>
+          <details key={q} className="card !shadow-none px-5 py-3">
+            <summary className="cursor-pointer font-semibold text-lg py-1">{q}</summary>
             <p className="mt-3 text-muted leading-relaxed">{a}</p>
           </details>
         ))}
       </section>
 
       <section id="safety" className="mt-20">
-        <h2 className="text-4xl">Safety guide</h2>
+        <h2 className="section-title">Safety guide</h2>
         <ul className="mt-6 space-y-3 leading-relaxed list-disc pl-6">
           <li>Meet in busy public places — malls, cafés, metro stations — during the day. Tell someone where you&apos;re going.</li>
           <li>Under 18? Always bring a parent or guardian to a meetup.</li>
@@ -44,7 +44,7 @@ export default function HelpPage() {
       </section>
 
       <section id="guidelines" className="mt-20">
-        <h2 className="text-4xl">Community guidelines</h2>
+        <h2 className="section-title">Community guidelines</h2>
         <p className="mt-4 text-muted">Cloro is a community of good people. Be mindful of others, and don&apos;t cause harm to anybody.</p>
         <ul className="mt-6 space-y-3 leading-relaxed list-disc pl-6">
           <li><strong>Be honest.</strong> State the true size, measurements, condition and flaws. No counterfeits.</li>

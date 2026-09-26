@@ -12,9 +12,9 @@ export default async function MembershipPage() {
   const active = user.listingPassUntil && user.listingPassUntil > new Date();
 
   return (
-    <div className="mx-auto max-w-xl px-6 py-20 fade-in">
+    <div className="mx-auto max-w-xl px-4 md:px-6 py-10 md:py-16 fade-in">
       <p className="eyebrow">Membership</p>
-      <h1 className="text-5xl mt-3">Listing on Cloro</h1>
+      <h1 className="text-4xl md:text-5xl mt-3">Listing on Cloro</h1>
 
       {band !== "ADULT_24_30" ? (
         <>

@@ -4,6 +4,7 @@ import { useActionState, useState, startTransition } from "react";
 import { createListing } from "@/app/actions/listings";
 import { CATEGORIES, CONDITIONS, DURATIONS_DAYS, MEASUREMENT_LABELS, SIZE_SYSTEMS } from "@/lib/catalog";
 import { compressImage } from "@/lib/compress-image";
+import { FormError } from "@/components/action-form";
 
 const MAX_PHOTOS = 6;
 
@@ -40,16 +41,21 @@ export function ListingForm({ city, pincode, feeNote }: { city: string; pincode:
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     fd.delete("photoPicker");
+    if (photos.length < 2) {
+      setPhotoError("Add at least 2 photos — the front and a close-up work well.");
+      document.getElementById("photos")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     for (const p of photos) fd.append("photos", p.file);
     startTransition(() => action(fd));
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-10">
+    <form onSubmit={onSubmit} className="space-y-5">
       {feeNote && <p className="notice">{feeNote}</p>}
 
-      <section className="space-y-5">
-        <h2 className="text-3xl">The piece</h2>
+      <section className="card p-5 md:p-7 space-y-5">
+        <h2 className="text-2xl flex items-center gap-3"><span className="w-8 h-8 rounded-full bg-gold-soft text-gold-dark font-sans text-sm font-bold flex items-center justify-center">1</span>The piece</h2>
         <div>
           <label className="label" htmlFor="title">Title</label>
           <input id="title" name="title" className="input" maxLength={90} placeholder="e.g. Vintage Levi's 501 denim jacket" required />
@@ -81,8 +87,8 @@ export function ListingForm({ city, pincode, feeNote }: { city: string; pincode:
         </div>
       </section>
 
-      <section className="space-y-5">
-        <h2 className="text-3xl">Size &amp; fit <span className="text-base text-muted">(required)</span></h2>
+      <section className="card p-5 md:p-7 space-y-5">
+        <h2 className="text-2xl flex items-center gap-3"><span className="w-8 h-8 rounded-full bg-gold-soft text-gold-dark font-sans text-sm font-bold flex items-center justify-center">2</span>Size &amp; fit <span className="text-base text-muted">(required)</span></h2>
         <div className="grid md:grid-cols-2 gap-4">
           <div>
             <label className="label" htmlFor="size">Size on the label</label>
@@ -107,26 +113,26 @@ export function ListingForm({ city, pincode, feeNote }: { city: string; pincode:
                 </div>
               ))}
             </div>
-            <p className="text-xs text-muted mt-2">Brands size differently. Real measurements prevent “wrong size” disputes.</p>
+            <p className="hint">Brands size differently. Real measurements prevent “wrong size” disputes.</p>
           </div>
         )}
       </section>
 
-      <section className="space-y-4">
-        <h2 className="text-3xl">Photos</h2>
+      <section id="photos" className="card p-5 md:p-7 space-y-4">
+        <h2 className="text-2xl flex items-center gap-3"><span className="w-8 h-8 rounded-full bg-gold-soft text-gold-dark font-sans text-sm font-bold flex items-center justify-center">3</span>Photos</h2>
         <p className="text-sm text-muted">2–6 photos. Natural light and a plain background look best — your first photo is the cover.</p>
         <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
           {photos.map((p, i) => (
-            <div key={p.url} className="relative aspect-square bg-ivory">
+            <div key={p.url} className="relative aspect-square bg-ivory rounded-xl overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={p.url} alt="" className="h-full w-full object-cover" />
               {i === 0 && <span className="absolute bottom-1 left-1 badge badge-gold">Cover</span>}
-              <button type="button" onClick={() => remove(i)} className="absolute top-1 right-1 bg-ink text-ivory w-6 h-6 text-xs" aria-label="Remove photo">×</button>
+              <button type="button" onClick={() => remove(i)} className="absolute top-1.5 right-1.5 bg-white/90 text-ink rounded-full w-7 h-7 text-sm shadow-soft" aria-label="Remove photo">×</button>
             </div>
           ))}
           {photos.length < MAX_PHOTOS && (
-            <label className="aspect-square border border-dashed border-line flex items-center justify-center text-3xl text-muted cursor-pointer hover:border-gold">
-              +
+            <label className="aspect-square rounded-xl border-2 border-dashed border-line flex flex-col items-center justify-center text-muted cursor-pointer hover:border-brand hover:text-brand">
+              <span className="text-2xl leading-none">+</span><span className="text-xs mt-1">Add photo</span>
               <input name="photoPicker" type="file" accept="image/*" multiple className="sr-only" onChange={addPhotos} />
             </label>
           )}
@@ -134,14 +140,14 @@ export function ListingForm({ city, pincode, feeNote }: { city: string; pincode:
         {photoError && <p className="text-sm text-red-700">{photoError}</p>}
         <fieldset className="flex flex-wrap gap-6 text-sm">
           <legend className="label">Optional trust badges — tick what you can show on request</legend>
-          <label className="flex items-center gap-2"><input type="checkbox" name="hasBill" /> Original bill</label>
-          <label className="flex items-center gap-2"><input type="checkbox" name="hasBox" /> Original box</label>
-          <label className="flex items-center gap-2"><input type="checkbox" name="hasTags" /> Tags attached</label>
+          <label className="flex items-center gap-2"><input type="checkbox" className="accent-brand w-4 h-4" name="hasBill" /> Original bill</label>
+          <label className="flex items-center gap-2"><input type="checkbox" className="accent-brand w-4 h-4" name="hasBox" /> Original box</label>
+          <label className="flex items-center gap-2"><input type="checkbox" className="accent-brand w-4 h-4" name="hasTags" /> Tags attached</label>
         </fieldset>
       </section>
 
-      <section className="space-y-5">
-        <h2 className="text-3xl">Auction</h2>
+      <section className="card p-5 md:p-7 space-y-5">
+        <h2 className="text-2xl flex items-center gap-3"><span className="w-8 h-8 rounded-full bg-gold-soft text-gold-dark font-sans text-sm font-bold flex items-center justify-center">4</span>Auction</h2>
         <div className="grid md:grid-cols-3 gap-4">
           <div>
             <label className="label" htmlFor="startPrice">Starting bid (₹)</label>
@@ -150,7 +156,7 @@ export function ListingForm({ city, pincode, feeNote }: { city: string; pincode:
           <div>
             <label className="label" htmlFor="reservePrice">Reserve (₹, optional)</label>
             <input id="reservePrice" name="reservePrice" type="number" min="1" className="input" />
-            <p className="text-xs text-muted mt-1">Hidden minimum. Bidders only see whether it&apos;s met.</p>
+            <p className="hint">Hidden minimum. Bidders only see whether it&apos;s met.</p>
           </div>
           <div>
             <label className="label" htmlFor="durationDays">Duration</label>
@@ -161,8 +167,8 @@ export function ListingForm({ city, pincode, feeNote }: { city: string; pincode:
         </div>
       </section>
 
-      <section className="space-y-5">
-        <h2 className="text-3xl">Handover</h2>
+      <section className="card p-5 md:p-7 space-y-5">
+        <h2 className="text-2xl flex items-center gap-3"><span className="w-8 h-8 rounded-full bg-gold-soft text-gold-dark font-sans text-sm font-bold flex items-center justify-center">5</span>Handover</h2>
         <div className="grid md:grid-cols-3 gap-4">
           <div>
             <label className="label" htmlFor="city">City</label>
@@ -175,17 +181,19 @@ export function ListingForm({ city, pincode, feeNote }: { city: string; pincode:
           <div>
             <label className="label" htmlFor="shippingEstimate">Estimated shipping (₹)</label>
             <input id="shippingEstimate" name="shippingEstimate" type="number" min="0" className="input" required />
-            <p className="text-xs text-muted mt-1">The buyer always pays shipping.</p>
+            <p className="hint">The buyer always pays shipping.</p>
           </div>
         </div>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="meetupPossible" defaultChecked /> Happy to meet in person (public place, daytime)
+          <input type="checkbox" className="accent-brand w-4 h-4" name="meetupPossible" defaultChecked /> Happy to meet in person (public place, daytime)
         </label>
       </section>
 
-      <div className="border-t border-line pt-8">
-        <button className="btn btn-primary" disabled={pending}>{pending ? "Publishing…" : "Publish lot"}</button>
-        {state?.error && <p className="mt-3 text-sm text-red-700" role="alert">{state.error}</p>}
+      <div className="sticky bottom-20 md:bottom-4 z-10 card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="text-sm text-muted flex-1">
+          {state?.error ? <FormError message={state.error} /> : "Check the size and photos once more — honest listings sell faster."}
+        </div>
+        <button className="btn btn-primary" disabled={pending}>{pending ? "Publishing…" : "Publish item"}</button>
       </div>
     </form>
   );

@@ -24,22 +24,22 @@ export default async function SupportPage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-14">
+    <div className="mx-auto max-w-3xl px-4 md:px-6 py-8 md:py-12">
       <div className="flex items-end justify-between">
         <div>
           <p className="eyebrow">We&apos;re here to help</p>
-          <h1 className="text-5xl mt-2">Support</h1>
+          <h1 className="text-4xl md:text-5xl mt-2">Support</h1>
         </div>
         <Link href="/support/new" className="btn btn-primary">New ticket</Link>
       </div>
       <p className="mt-4 text-sm text-muted">Real people reply, usually within 48 hours. Urgent safety reports are reviewed first.</p>
-      <ul className="mt-10 divide-y divide-line border-y border-line">
+      <ul className="mt-8 card !shadow-none divide-y divide-line overflow-hidden">
         {tickets.length === 0 && <li className="py-10 text-center text-muted">No tickets. Check the <Link href="/help" className="link">help centre</Link> for quick answers.</li>}
         {tickets.map((t) => (
           <li key={t.id}>
-            <Link href={`/support/${t.id}`} className="flex justify-between gap-4 py-4 px-2 hover:bg-ivory">
+            <Link href={`/support/${t.id}`} className="flex justify-between gap-4 p-4 hover:bg-paper">
               <span>
-                <span className="serif text-xl">{t.subject}</span>
+                <span className="font-semibold">{t.subject}</span>
                 <span className="block text-xs text-muted">{ticketCategoryLabel(t.category)}{t.userId !== user.id && " · reported about you"}</span>
               </span>
               <span className="text-right text-sm">

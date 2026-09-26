@@ -17,9 +17,9 @@ export default async function NewTicketPage({ searchParams }: PageProps<"/suppor
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-14">
+    <div className="mx-auto max-w-2xl px-4 md:px-6 py-8 md:py-12">
       <p className="eyebrow">Support</p>
-      <h1 className="text-5xl mt-2">How can we help?</h1>
+      <h1 className="text-4xl md:text-5xl mt-2">How can we help?</h1>
       <p className="notice mt-6 text-sm">
         If you feel unsafe, contact local police (112) first. For online payment fraud, call 1930 or report at cybercrime.gov.in — we&apos;ll
         help with evidence from Cloro.
@@ -54,7 +54,7 @@ export default async function NewTicketPage({ searchParams }: PageProps<"/suppor
         </div>
         <div>
           <label className="label" htmlFor="attachments">Evidence (up to 4 images, 1.5 MB each)</label>
-          <input id="attachments" name="attachments" type="file" accept="image/jpeg,image/png,image/webp" multiple className="text-sm" />
+          <input id="attachments" name="attachments" type="file" accept="image/jpeg,image/png,image/webp" multiple className="block w-full text-sm text-muted file:mr-3 file:rounded-full file:border file:border-line file:bg-white file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:border-ink" />
           <p className="text-xs text-muted mt-1">Screenshots, photos of the item or parcel, courier receipts. Keep videos ready — we&apos;ll ask if we need them.</p>
         </div>
       </ActionForm>

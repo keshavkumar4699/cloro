@@ -1,12 +1,12 @@
 export const CATEGORIES = [
-  { id: "fashion", label: "Fashion", measurements: ["chest_cm", "length_cm", "waist_cm"] },
-  { id: "streetwear", label: "Streetwear", measurements: ["chest_cm", "length_cm", "waist_cm"] },
-  { id: "sneakers", label: "Sneakers", measurements: ["insole_cm"] },
-  { id: "bags", label: "Bags", measurements: ["width_cm", "height_cm", "depth_cm"] },
-  { id: "watches", label: "Watches", measurements: ["case_mm", "strap_cm"] },
-  { id: "accessories", label: "Accessories", measurements: ["length_cm"] },
-  { id: "gadgets", label: "Gadgets", measurements: ["screen_in"] },
-  { id: "other", label: "Other", measurements: [] as string[] },
+  { id: "fashion", emoji: "👗", label: "Fashion", measurements: ["chest_cm", "length_cm", "waist_cm"] },
+  { id: "streetwear", emoji: "🧢", label: "Streetwear", measurements: ["chest_cm", "length_cm", "waist_cm"] },
+  { id: "sneakers", emoji: "👟", label: "Sneakers", measurements: ["insole_cm"] },
+  { id: "bags", emoji: "👜", label: "Bags", measurements: ["width_cm", "height_cm", "depth_cm"] },
+  { id: "watches", emoji: "⌚", label: "Watches", measurements: ["case_mm", "strap_cm"] },
+  { id: "accessories", emoji: "🕶️", label: "Accessories", measurements: ["length_cm"] },
+  { id: "gadgets", emoji: "🎧", label: "Gadgets", measurements: ["screen_in"] },
+  { id: "other", emoji: "✨", label: "Other", measurements: [] as string[] },
 ] as const;
 
 export type CategoryId = (typeof CATEGORIES)[number]["id"];

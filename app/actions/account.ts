@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ActionError, getCurrentUser } from "@/lib/session";
+import { ok } from "@/lib/flash";
 import { toActionState, type ActionState } from "@/lib/action-state";
 import { identityFingerprint, loadUidaiPublicKey, namesMatch, parseSecureQr } from "@/lib/aadhaar";
 import { ageBand, ageOn, isEligibleBand } from "@/lib/rules";
@@ -16,6 +17,9 @@ async function signedIn() {
   if (!user) throw new ActionError("Please sign in first.");
   return user;
 }
+
+const GUARDIAN_LINK_DAYS = 7;
+const linkExpired = (createdAt: Date) => Date.now() - createdAt.getTime() > GUARDIAN_LINK_DAYS * 86400000;
 
 const onboardingSchema = z.object({
   dob: z.string().optional(),
@@ -34,6 +38,8 @@ export async function completeOnboarding(_: ActionState, formData: FormData): Pr
     if (!dob) {
       const d = parsed.data.dob ? new Date(parsed.data.dob + "T00:00:00Z") : null;
       if (!d || Number.isNaN(d.getTime())) return { error: "Enter your date of birth." };
+      const age = ageOn(d);
+      if (d > new Date() || age > 120) return { error: "That date of birth doesn't look right. Please check it." };
       dob = d;
     }
     await db.user.update({
@@ -47,6 +53,7 @@ export async function completeOnboarding(_: ActionState, formData: FormData): Pr
       },
     });
     if (!isEligibleBand(ageBand(ageOn(dob)))) redirect("/not-eligible");
+    await ok(`Welcome to Cloro${user.name ? `, ${user.name.split(" ")[0]}` : ""}! Have a look around.`);
   } catch (e) {
     return toActionState(e);
   }
@@ -56,7 +63,7 @@ export async function completeOnboarding(_: ActionState, formData: FormData): Pr
 export async function verifyAadhaar(_: ActionState, formData: FormData): Promise<ActionState> {
   try {
     const user = await signedIn();
-    if (user.aadhaarVerifiedAt) return { ok: "You're already verified." };
+    if (user.aadhaarVerifiedAt) return await ok("You're already verified.");
     const qr = String(formData.get("qr") ?? "");
     if (!qr) return { error: "Scan or upload your Aadhaar card first." };
 
@@ -66,6 +73,9 @@ export async function verifyAadhaar(_: ActionState, formData: FormData): Promise
     }
     const id = parseSecureQr(qr, key);
 
+    if (!user.name) {
+      return { error: "Your Google account has no name set. Add your name in your Google account, sign out and back in, then try again." };
+    }
     if (!namesMatch(id.name, user.name)) {
       return { error: "The name on this Aadhaar doesn't match your Google account name. Please use your own card." };
     }
@@ -88,22 +98,30 @@ export async function verifyAadhaar(_: ActionState, formData: FormData): Promise
       },
     });
     if (!isEligibleBand(band)) redirect("/not-eligible");
-    if (band === "MINOR") redirect("/guardian");
-    return { ok: "Verified! You can now list, bid and chat." };
+    if (band === "MINOR") {
+      await ok("Verified! One more step: ask a parent or guardian to approve.");
+      redirect("/guardian");
+    }
+    revalidatePath("/", "layout");
+    return await ok("You're verified! You can now bid, sell and chat.");
   } catch (e) {
     return toActionState(e);
   }
 }
 
-export async function createGuardianRequest(): Promise<ActionState> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function createGuardianRequest(_prev?: ActionState): Promise<ActionState> {
   try {
     const user = await signedIn();
     const existing = await db.guardianRequest.findFirst({ where: { minorId: user.id, status: "PENDING" } });
-    if (!existing) {
+    if (existing && linkExpired(existing.createdAt)) {
+      await db.guardianRequest.update({ where: { id: existing.id }, data: { status: "EXPIRED" } });
+    }
+    if (!existing || linkExpired(existing.createdAt)) {
       await db.guardianRequest.create({ data: { minorId: user.id, token: randomBytes(24).toString("base64url") } });
     }
     revalidatePath("/guardian");
-    return { ok: "Link created." };
+    return await ok("Link created.");
   } catch (e) {
     return toActionState(e);
   }
@@ -117,6 +135,7 @@ export async function decideGuardianRequest(_: ActionState, formData: FormData):
     const relationship = String(formData.get("relationship") ?? "").trim();
     const req = await db.guardianRequest.findUnique({ where: { token } });
     if (!req || req.status !== "PENDING") return { error: "This link is no longer valid." };
+    if (linkExpired(req.createdAt)) return { error: "This link has expired. Ask them to create a new one from their Cloro account." };
     if (req.minorId === guardian.id) return { error: "The approval must come from your parent or guardian's own Google account." };
     if (guardian.dob && ageOn(guardian.dob) < 18) return { error: "A guardian must be an adult." };
     if (decision === "APPROVED" && !relationship) return { error: "Tell us how you're related." };
@@ -136,7 +155,7 @@ export async function decideGuardianRequest(_: ActionState, formData: FormData):
       decision === "APPROVED" ? "Your guardian approved your account. You can start trading!" : "Your guardian declined the request.",
       "/dashboard",
     );
-    return { ok: decision === "APPROVED" ? "Thank you — the account is approved." : "Request declined." };
+    return await ok(decision === "APPROVED" ? "Thank you — the account is approved." : "Request declined.");
   } catch (e) {
     return toActionState(e);
   }
@@ -154,13 +173,14 @@ export async function toggleBlock(_: ActionState, formData: FormData): Promise<A
     const user = await signedIn();
     const targetId = String(formData.get("userId"));
     if (targetId === user.id) return { error: "You can't block yourself." };
+    if (!(await db.user.findUnique({ where: { id: targetId }, select: { id: true } }))) return { error: "Member not found." };
     const key = { blockerId_blockedId: { blockerId: user.id, blockedId: targetId } };
     const existing = await db.block.findUnique({ where: key });
     if (existing) await db.block.delete({ where: key });
     else await db.block.create({ data: { blockerId: user.id, blockedId: targetId } });
     await audit(user.id, existing ? "unblock" : "block", targetId);
     revalidatePath("/", "layout");
-    return { ok: existing ? "Unblocked." : "Blocked. They can no longer message you." };
+    return await ok(existing ? "Unblocked." : "Blocked. They can no longer message you.");
   } catch (e) {
     return toActionState(e);
   }

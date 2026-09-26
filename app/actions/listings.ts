@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ActionError, getCurrentUser, isStaff, requireTrader } from "@/lib/session";
+import { ok } from "@/lib/flash";
 import { toActionState, type ActionState } from "@/lib/action-state";
 import { saveImage } from "@/lib/storage";
 import { CATEGORIES, CONDITIONS, DURATIONS_DAYS, SIZE_SYSTEMS } from "@/lib/catalog";
@@ -12,6 +13,7 @@ import { listingFeeRequired, ageBand, ageOn } from "@/lib/rules";
 import { placeBid } from "@/lib/auction";
 import { notify, audit } from "@/lib/notify";
 import { detectOffPlatform } from "@/lib/contact-filter";
+import { rateLimit } from "@/lib/rate-limit";
 
 const MIN_PHOTOS = 2;
 const MAX_PHOTOS = 6;
@@ -42,6 +44,7 @@ export async function createListing(_: ActionState, formData: FormData): Promise
     if (listingFeeRequired(user)) {
       return { error: "Your monthly listing pass has run out. Renew it on the Membership page to list more items." };
     }
+    await rateLimit("listing", user.id);
     const parsed = listingSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) return { error: parsed.error.issues[0].message };
     const data = parsed.data;
@@ -106,6 +109,7 @@ export async function createListing(_: ActionState, formData: FormData): Promise
       return l;
     });
     id = listing.id;
+    await ok("Your item is live! Share it with friends to get the bidding going.");
   } catch (e) {
     return toActionState(e);
   }
@@ -121,7 +125,7 @@ export async function bidAction(_: ActionState, formData: FormData): Promise<Act
     const res = await placeBid(listingId, user, amount);
     if (!res.ok) return { error: res.error };
     revalidatePath(`/listings/${listingId}`);
-    return { ok: `Bid of ₹${amount.toLocaleString("en-IN")} placed. You're the highest bidder.` };
+    return await ok(`Bid of ₹${amount.toLocaleString("en-IN")} placed. You're the highest bidder.`);
   } catch (e) {
     return toActionState(e);
   }
@@ -139,7 +143,7 @@ export async function cancelListing(_: ActionState, formData: FormData): Promise
     }
     await db.listing.update({ where: { id }, data: { status: "CANCELLED" } });
     revalidatePath(`/listings/${id}`);
-    return { ok: "Listing cancelled." };
+    return await ok("Listing cancelled.");
   } catch (e) {
     return toActionState(e);
   }
@@ -191,6 +195,7 @@ export async function relistListing(_: ActionState, formData: FormData): Promise
       });
     });
     newId = fresh.id;
+    await ok("Relisted — good luck this time!");
   } catch (e) {
     return toActionState(e);
   }
@@ -208,10 +213,12 @@ export async function askQuestion(_: ActionState, formData: FormData): Promise<A
     const listing = await db.listing.findUnique({ where: { id: listingId } });
     if (!listing) return { error: "Listing not found." };
     if (listing.sellerId === user.id) return { error: "You can't ask on your own listing." };
+    if (listing.status !== "LIVE") return { error: "Questions close when the auction ends." };
+    await rateLimit("question", user.id);
     await db.question.create({ data: { listingId, askerId: user.id, body } });
     await notify(listing.sellerId, `New question on “${listing.title}”.`, `/listings/${listingId}#qa`);
     revalidatePath(`/listings/${listingId}`);
-    return { ok: "Question posted. The seller's answer will be public." };
+    return await ok("Question posted. The seller's answer will be public.");
   } catch (e) {
     return toActionState(e);
   }
@@ -229,7 +236,7 @@ export async function answerQuestion(_: ActionState, formData: FormData): Promis
     await db.question.update({ where: { id: q.id }, data: { answer, answeredAt: new Date() } });
     await notify(q.askerId, `The seller answered your question on “${q.listing.title}”.`, `/listings/${q.listingId}#qa`);
     revalidatePath(`/listings/${q.listingId}`);
-    return { ok: "Answer posted." };
+    return await ok("Answer posted.");
   } catch (e) {
     return toActionState(e);
   }
@@ -243,7 +250,7 @@ export async function hideQuestion(_: ActionState, formData: FormData): Promise<
     if (!q || (q.listing.sellerId !== user.id && !isStaff(user))) return { error: "Not allowed." };
     await db.question.update({ where: { id: q.id }, data: { hidden: true } });
     revalidatePath(`/listings/${q.listingId}`);
-    return { ok: "Question hidden." };
+    return await ok("Question hidden.");
   } catch (e) {
     return toActionState(e);
   }
@@ -260,7 +267,7 @@ export async function toggleCurated(_: ActionState, formData: FormData): Promise
     await audit(user!.id, l.curated ? "uncurate" : "curate", id);
     revalidatePath("/");
     revalidatePath(`/listings/${id}`);
-    return { ok: l.curated ? "Removed from Curated." : "Added to Curated." };
+    return await ok(l.curated ? "Removed from Curated." : "Added to Curated.");
   } catch (e) {
     return toActionState(e);
   }

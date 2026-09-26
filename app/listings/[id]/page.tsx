@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ChevronRight, Flag, MapPin, MessageCircle, Package, Ruler, Sparkles, Truck, Users } from "lucide-react";
 import { db } from "@/lib/db";
 import { getCurrentUser, isStaff, bandOf } from "@/lib/session";
 import { rankedBidders, settleListing } from "@/lib/auction";
 import { categoryLabel, conditionLabel, MEASUREMENT_LABELS, DURATIONS_DAYS } from "@/lib/catalog";
-import { formatDateTime, formatINR } from "@/lib/format";
+import { formatDateTime, formatINR, formatDate } from "@/lib/format";
 import { MINOR_BID_CAP, minNextBid, tradeBlock, TRADE_BLOCK_MESSAGES } from "@/lib/rules";
 import { getReputation } from "@/lib/reputation";
 import { BidPanel } from "@/components/bid-panel";
+import { Gallery } from "@/components/gallery";
 import { MemberCard } from "@/components/member-card";
 import { ActionForm } from "@/components/action-form";
+import { Avatar } from "@/components/avatar";
 import { answerQuestion, askQuestion, cancelListing, hideQuestion, relistListing, toggleCurated } from "@/app/actions/listings";
 import { openConversation } from "@/app/actions/chat";
 import { offerNextAction } from "@/app/actions/deals";
@@ -19,7 +22,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: PageProps<"/listings/[id]">) {
   const { id } = await params;
   const l = await db.listing.findUnique({ where: { id }, select: { title: true } });
-  return { title: l?.title ?? "Lot" };
+  return { title: l?.title ?? "Item" };
 }
 
 export default async function ListingPage({ params }: PageProps<"/listings/[id]">) {
@@ -29,7 +32,7 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
     where: { id },
     include: {
       images: { orderBy: { position: "asc" } },
-      questions: { where: { hidden: false }, orderBy: { createdAt: "desc" }, include: { asker: { select: { name: true } } } },
+      questions: { where: { hidden: false }, orderBy: { createdAt: "desc" }, include: { asker: { select: { name: true, image: true } } } },
       deals: { orderBy: { rank: "asc" } },
     },
   });
@@ -43,50 +46,62 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
   const canTrade = !!user && !block;
   const isMinor = !!user && bandOf(user) === "MINOR";
   const activeDeal = listing.deals.find((d) => ["OFFERED", "ACCEPTED", "COMPLETED"].includes(d.status));
-  const myDeal = user ? listing.deals.find((d) => d.buyerId === user.id || d.sellerId === user.id) : undefined;
+  const latestDeal = listing.deals.at(-1);
+  const myDeal = !user ? undefined : isSeller ? activeDeal ?? latestDeal : [...listing.deals].reverse().find((d) => d.buyerId === user.id);
   const staff = isStaff(user);
+  const sellerBanned = sellerRep?.user.status === "BANNED";
 
   const bidderNames = isSeller
-    ? await db.user.findMany({ where: { id: { in: top3.map((b) => b.bidderId) } }, select: { id: true, name: true } })
+    ? await db.user.findMany({ where: { id: { in: top3.map((b) => b.bidderId) } }, select: { id: true, name: true, image: true } })
     : [];
 
   const blockedReason = !user ? (
-    <Link href={`/signin?next=/listings/${id}`} className="link">Sign in to bid</Link>
+    <p><Link href={`/signin?next=/listings/${id}`} className="font-semibold link">Sign in</Link> to place a bid. It takes a few seconds with Google.</p>
   ) : isSeller ? (
-    <p className="text-muted">This is your lot.</p>
+    <p>This is your item — you&apos;ll get an alert for every new bid.</p>
   ) : block === "NOT_VERIFIED" ? (
-    <p>Verify once with Aadhaar to bid. <Link href="/verify" className="link">Verify now</Link></p>
+    <p>One quick step before your first bid: <Link href="/verify" className="font-semibold link">verify with Aadhaar</Link> (takes a minute).</p>
   ) : block === "NEEDS_GUARDIAN" ? (
-    <p>A parent or guardian needs to approve your account. <Link href="/guardian" className="link">Get approval</Link></p>
+    <p>A parent or guardian needs to approve your account first. <Link href="/guardian" className="font-semibold link">Send them a link</Link></p>
   ) : block === "NOT_ONBOARDED" ? (
-    <p><Link href="/welcome" className="link">Finish setting up your account</Link> to bid.</p>
+    <p><Link href="/welcome" className="font-semibold link">Finish setting up your account</Link> to bid.</p>
   ) : block ? (
-    <p className="text-muted">{TRADE_BLOCK_MESSAGES[block]}</p>
+    <p>{TRADE_BLOCK_MESSAGES[block]}</p>
   ) : null;
 
   const measurements = Object.entries((listing.measurements ?? {}) as Record<string, number>);
+  const facts: [React.ElementType, string, string][] = [
+    [Ruler, "Size", `${listing.size} · ${listing.sizeSystem}`],
+    ...measurements.map(([k, v]) => [Ruler, MEASUREMENT_LABELS[k] ?? k, String(v)] as [React.ElementType, string, string]),
+    [Sparkles, "Condition", conditionLabel(listing.condition)],
+    [MapPin, "Location", `${listing.city} · ${listing.pincode}`],
+    [Users, "Handover", listing.meetupPossible ? "Meetup or shipping" : "Shipping only"],
+    [Truck, "Shipping", `~${formatINR(listing.shippingEstimate)}, paid by buyer`],
+  ];
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-12">
-      <nav className="text-xs text-muted tracking-[0.14em] uppercase">
-        <Link href="/browse" className="hover:text-ink">Browse</Link> / <Link href={`/browse?category=${listing.category}`} className="hover:text-ink">{categoryLabel(listing.category)}</Link>
+    <div className="mx-auto max-w-6xl px-4 md:px-6 py-6 md:py-10">
+      <nav className="flex items-center gap-1 text-sm text-muted" aria-label="Breadcrumb">
+        <Link href="/browse" className="hover:text-ink">Explore</Link>
+        <ChevronRight className="w-3.5 h-3.5" aria-hidden />
+        <Link href={`/browse?category=${listing.category}`} className="hover:text-ink">{categoryLabel(listing.category)}</Link>
       </nav>
 
-      <div className="mt-6 grid lg:grid-cols-[1.3fr_1fr] gap-12">
-        <div className="space-y-3">
-          {listing.images.map((img, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={img.id} src={img.url} alt={`${listing.title} photo ${i + 1}`} className={`w-full bg-ivory object-cover ${i === 0 ? "aspect-[4/5]" : "aspect-square"}`} />
-          ))}
+      <div className="mt-4 grid lg:grid-cols-[1.15fr_1fr] gap-8 lg:gap-12">
+        <div className="lg:sticky lg:top-24 self-start">
+          <Gallery images={listing.images} title={listing.title} />
         </div>
 
-        <div className="space-y-8 lg:sticky lg:top-24 self-start">
+        <div className="space-y-6">
           <div>
-            {listing.brand && <p className="eyebrow">{listing.brand}</p>}
-            <h1 className="text-5xl leading-tight mt-2">{listing.title}</h1>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
+              {listing.brand && <span className="eyebrow">{listing.brand}</span>}
+              {listing.curated && <span className="badge badge-gold"><Sparkles className="w-3 h-3" aria-hidden /> Cloro Curated</span>}
+            </div>
+            <h1 className="text-3xl md:text-[2.6rem] leading-tight mt-2">{listing.title}</h1>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="badge badge-brand">Size {listing.size}</span>
               <span className="badge">{conditionLabel(listing.condition)}</span>
-              {listing.curated && <span className="badge badge-gold">Cloro Curated</span>}
               {listing.hasBill && <span className="badge badge-gold">Bill ✓</span>}
               {listing.hasBox && <span className="badge badge-gold">Box ✓</span>}
               {listing.hasTags && <span className="badge badge-gold">Tags ✓</span>}
@@ -94,7 +109,7 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
           </div>
 
           {listing.status === "CANCELLED" ? (
-            <p className="notice">This lot was withdrawn by the seller.</p>
+            <p className="notice">{sellerBanned ? "This item was removed from Cloro." : "The seller withdrew this item."}</p>
           ) : (
             <BidPanel
               listingId={listing.id}
@@ -116,76 +131,79 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
           )}
 
           {myDeal && (
-            <Link href={`/deals/${myDeal.id}`} className="btn btn-gold w-full">View your deal</Link>
+            <Link href={`/deals/${myDeal.id}`} className="btn btn-gold w-full">
+              <Package className="w-4 h-4" aria-hidden /> {isSeller ? "View the deal" : "View your deal"}
+            </Link>
           )}
 
-          {inTop3 && !isSeller && canTrade && listing.status !== "CANCELLED" && (
-            <ActionForm action={openConversation} submit="Chat with the seller" variant="ghost">
+          {inTop3 && !isSeller && listing.status !== "CANCELLED" && (canTrade || myDeal) && (
+            <ActionForm action={openConversation} submit={<><MessageCircle className="w-4 h-4" aria-hidden /> Chat with the seller</>} variant="ghost" full>
               <input type="hidden" name="listingId" value={listing.id} />
             </ActionForm>
           )}
 
-          <dl className="grid grid-cols-2 gap-y-4 text-sm border-t border-line pt-6">
-            <dt className="text-muted">Size</dt>
-            <dd>{listing.size} <span className="text-muted">· {listing.sizeSystem}</span></dd>
-            {measurements.map(([k, v]) => (
-              <div key={k} className="contents">
-                <dt className="text-muted">{MEASUREMENT_LABELS[k] ?? k}</dt>
-                <dd>{v}</dd>
-              </div>
-            ))}
-            <dt className="text-muted">Location</dt>
-            <dd>{listing.city} · {listing.pincode}</dd>
-            <dt className="text-muted">Handover</dt>
-            <dd>{listing.meetupPossible ? "Meetup or shipping" : "Shipping only"}</dd>
-            <dt className="text-muted">Shipping</dt>
-            <dd>~{formatINR(listing.shippingEstimate)}, paid by buyer</dd>
-            <dt className="text-muted">Ends</dt>
-            <dd>{formatDateTime(listing.endsAt)}</dd>
-          </dl>
+          <div className="card !shadow-none p-5">
+            <h2 className="font-sans text-base font-bold tracking-normal">The details</h2>
+            <dl className="mt-3 divide-y divide-line">
+              {facts.map(([Icon, k, v]) => (
+                <div key={k} className="flex items-center gap-3 py-2.5 text-sm">
+                  <Icon className="w-4 h-4 text-muted shrink-0" aria-hidden />
+                  <dt className="text-muted w-36 shrink-0">{k}</dt>
+                  <dd className="font-medium">{v}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-4 text-[0.95rem] leading-relaxed whitespace-pre-line text-ink-soft">{listing.description}</p>
+            <p className="mt-4 text-xs text-muted">Listed {formatDate(listing.createdAt)} · ends {formatDateTime(listing.endsAt)}</p>
+          </div>
 
-          <div className="text-[0.95rem] leading-relaxed whitespace-pre-line">{listing.description}</div>
-
-          {sellerRep && <MemberCard rep={sellerRep} label="Seller" />}
+          {sellerRep && <MemberCard rep={sellerRep} label="Sold by" />}
 
           {isSeller && (
-            <div className="card p-6 space-y-5">
-              <p className="eyebrow">Seller controls</p>
-              {top3.length > 0 && (
+            <div className="card p-5 space-y-5">
+              <h2 className="font-sans text-base font-bold tracking-normal">Manage your item</h2>
+              {top3.length > 0 ? (
                 <div>
-                  <p className="text-sm mb-2">Top bidders — you can chat with the top 3:</p>
+                  <p className="text-sm text-muted mb-3">Your top bidders — you can chat with the top 3.</p>
                   <ul className="space-y-2">
-                    {top3.map((b, i) => (
-                      <li key={b.bidderId} className="flex items-center justify-between gap-3 text-sm">
-                        <span>#{i + 1} {bidderNames.find((n) => n.id === b.bidderId)?.name ?? "Bidder"} · {formatINR(b.amount)}</span>
-                        <ActionForm action={openConversation} submit="Chat" variant="ghost">
-                          <input type="hidden" name="listingId" value={listing.id} />
-                          <input type="hidden" name="bidderId" value={b.bidderId} />
-                        </ActionForm>
-                      </li>
-                    ))}
+                    {top3.map((b, i) => {
+                      const bidder = bidderNames.find((n) => n.id === b.bidderId);
+                      return (
+                        <li key={b.bidderId} className="flex items-center gap-3 rounded-xl bg-paper px-3 py-2">
+                          <span className="text-xs font-bold text-muted w-5">#{i + 1}</span>
+                          <Avatar name={bidder?.name} image={bidder?.image} size={32} />
+                          <span className="flex-1 min-w-0 text-sm"><span className="font-medium truncate block">{bidder?.name ?? "Bidder"}</span>{formatINR(b.amount)}</span>
+                          <ActionForm action={openConversation} submit="Chat" variant="ghost" size="sm">
+                            <input type="hidden" name="listingId" value={listing.id} />
+                            <input type="hidden" name="bidderId" value={b.bidderId} />
+                          </ActionForm>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
+              ) : (
+                listing.status === "LIVE" && <p className="text-sm text-muted">No bids yet. Tip: share the link with friends and answer questions quickly.</p>
               )}
               {listing.status === "LIVE" && listing.bidCount === 0 && (
-                <ActionForm action={cancelListing} submit="Withdraw lot" variant="danger" confirm="Withdraw this lot?">
+                <ActionForm action={cancelListing} submit="Withdraw item" variant="danger" size="sm" confirm="Withdraw this item? You can relist it later.">
                   <input type="hidden" name="listingId" value={listing.id} />
                 </ActionForm>
               )}
               {listing.status === "ENDED" && !activeDeal && ranked.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm text-muted">
-                    {listing.deals.length === 0 ? "The reserve wasn't met. You can still sell to the top bidder." : "The last offer didn't go through. You can offer it to the next bidder."}
+                    {listing.deals.length === 0 ? "The reserve wasn't met, but you can still sell to the top bidder." : "The last offer didn't go through. You can offer it to the next bidder."}
                   </p>
                   <ActionForm action={offerNextAction} submit={listing.deals.length === 0 ? "Offer to top bidder" : "Offer to next bidder"} variant="gold">
                     <input type="hidden" name="listingId" value={listing.id} />
                   </ActionForm>
                 </div>
               )}
-              {(listing.status === "UNSOLD" || listing.status === "CANCELLED" || (listing.status === "ENDED" && !activeDeal)) && (
-                <ActionForm action={relistListing} submit="Relist" variant="ghost" className="flex gap-2 items-end">
+              {(listing.status === "UNSOLD" || listing.status === "CANCELLED" || (listing.status === "ENDED" && !activeDeal)) && !sellerBanned && (
+                <ActionForm action={relistListing} submit="Relist" variant="ghost" className="flex gap-2 items-center">
                   <input type="hidden" name="listingId" value={listing.id} />
-                  <select name="durationDays" defaultValue="3" className="input w-32">
+                  <select name="durationDays" defaultValue="3" className="input !w-36" aria-label="Duration">
                     {DURATIONS_DAYS.map((d) => <option key={d} value={d}>{d} day{d > 1 ? "s" : ""}</option>)}
                   </select>
                 </ActionForm>
@@ -194,66 +212,79 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
           )}
 
           {staff && (
-            <ActionForm action={toggleCurated} submit={listing.curated ? "Remove from Curated" : "Add to Curated"} variant="ghost">
+            <ActionForm action={toggleCurated} submit={listing.curated ? "Remove from Curated" : "Add to Curated"} variant="ghost" size="sm">
               <input type="hidden" name="listingId" value={listing.id} />
             </ActionForm>
           )}
 
           {user && !isSeller && (
-            <Link href={`/support/new?listingId=${listing.id}&category=COUNTERFEIT`} className="text-xs text-muted link block">Report this listing</Link>
+            <Link href={`/support/new?listingId=${listing.id}`} className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-ink">
+              <Flag className="w-3.5 h-3.5" aria-hidden /> Report this item
+            </Link>
           )}
         </div>
       </div>
 
-      <section id="qa" className="mt-20 max-w-3xl">
-        <p className="eyebrow">Public Q&amp;A</p>
-        <h2 className="text-4xl mt-2">Questions for the seller</h2>
-        <p className="text-sm text-muted mt-2">Ask about size, flaws, bills or boxes. Answers are visible to everyone.</p>
+      <div className="mt-14 grid lg:grid-cols-[1.15fr_1fr] gap-8 lg:gap-12">
+        <section id="qa">
+          <h2 className="section-title">Questions &amp; answers</h2>
+          <p className="text-sm text-muted mt-1">Ask about size, flaws, bills or boxes — everyone can see the answers.</p>
 
-        {user && canTrade && !isSeller && listing.status === "LIVE" && (
-          <ActionForm action={askQuestion} submit="Ask publicly" className="mt-6 space-y-3">
-            <input type="hidden" name="listingId" value={listing.id} />
-            <textarea name="body" rows={2} maxLength={500} className="input" placeholder="e.g. Is the original bill available? How does it fit?" required />
-          </ActionForm>
-        )}
+          {listing.status === "LIVE" && !isSeller && (
+            canTrade ? (
+              <ActionForm action={askQuestion} submit="Ask" className="mt-5 flex flex-col sm:flex-row gap-2 sm:items-start">
+                <input type="hidden" name="listingId" value={listing.id} />
+                <textarea name="body" rows={1} maxLength={500} className="input flex-1 resize-none" placeholder="e.g. Is the original bill available?" required aria-label="Your question" />
+              </ActionForm>
+            ) : (
+              <p className="mt-4 text-sm text-muted">{user ? "Verify your account to ask a question." : <><Link href={`/signin?next=/listings/${id}`} className="link">Sign in</Link> to ask a question.</>}</p>
+            )
+          )}
 
-        <ul className="mt-8 space-y-6">
-          {listing.questions.length === 0 && <li className="text-muted">No questions yet.</li>}
-          {listing.questions.map((q) => (
-            <li key={q.id} className="border-b border-line pb-6">
-              <p className="text-sm"><span className="text-muted">{q.asker.name ?? "Member"} asked:</span> {q.body}</p>
-              {q.answer ? (
-                <p className="mt-2 pl-4 border-l-2 border-gold text-[0.95rem]">{q.answer}</p>
-              ) : isSeller ? (
-                <ActionForm action={answerQuestion} submit="Answer" className="mt-3 space-y-2">
-                  <input type="hidden" name="questionId" value={q.id} />
-                  <textarea name="answer" rows={2} className="input" required />
-                </ActionForm>
-              ) : (
-                <p className="mt-2 text-xs text-muted">Not answered yet.</p>
-              )}
-              {(isSeller || staff) && (
-                <ActionForm action={hideQuestion} submit="Hide" variant="ghost" className="mt-2">
-                  <input type="hidden" name="questionId" value={q.id} />
-                </ActionForm>
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
+          <ul className="mt-6 space-y-4">
+            {listing.questions.length === 0 && <li className="text-muted text-sm">No questions yet — be the first to ask.</li>}
+            {listing.questions.map((q) => (
+              <li key={q.id} className="card !shadow-none p-4">
+                <div className="flex gap-3">
+                  <Avatar name={q.asker.name} image={q.asker.image} size={32} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted">{q.asker.name ?? "Member"} asked</p>
+                    <p className="text-[0.95rem] mt-0.5">{q.body}</p>
+                    {q.answer ? (
+                      <p className="mt-3 rounded-xl bg-brand-soft/60 px-3 py-2 text-[0.95rem]"><span className="text-xs font-semibold text-brand block">Seller</span>{q.answer}</p>
+                    ) : isSeller ? (
+                      <ActionForm action={answerQuestion} submit="Answer" size="sm" className="mt-3 flex gap-2 items-start">
+                        <input type="hidden" name="questionId" value={q.id} />
+                        <textarea name="answer" rows={1} className="input flex-1 resize-none" required aria-label="Your answer" />
+                      </ActionForm>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted">Waiting for the seller to answer.</p>
+                    )}
+                  </div>
+                </div>
+                {(isSeller || staff) && (
+                  <ActionForm action={hideQuestion} submit="Hide" variant="ghost" size="sm" className="mt-2 text-right">
+                    <input type="hidden" name="questionId" value={q.id} />
+                  </ActionForm>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
 
-      <section className="mt-16 max-w-3xl">
-        <p className="eyebrow">Bid history</p>
-        <ul className="mt-4 text-sm divide-y divide-line">
-          {ranked.length === 0 && <li className="py-2 text-muted">No bids yet.</li>}
-          {ranked.map((b, i) => (
-            <li key={b.bidderId} className="py-2 flex justify-between">
-              <span>{user?.id === b.bidderId ? "You" : `Bidder ${i + 1}`}</span>
-              <span>{formatINR(b.amount)}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+        <section>
+          <h2 className="section-title">Bid history</h2>
+          <ul className="mt-5 card !shadow-none divide-y divide-line">
+            {ranked.length === 0 && <li className="p-4 text-sm text-muted">No bids yet.</li>}
+            {ranked.map((b, i) => (
+              <li key={b.bidderId} className="px-4 py-3 flex justify-between text-sm">
+                <span className={user?.id === b.bidderId ? "font-semibold text-brand" : ""}>{user?.id === b.bidderId ? "You" : `Bidder ${i + 1}`}{i === 0 && " 👑"}</span>
+                <span className="font-semibold">{formatINR(b.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
     </div>
   );
 }

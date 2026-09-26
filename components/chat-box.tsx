@@ -1,9 +1,14 @@
 "use client";
 
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
+import { Loader2, SendHorizontal, ShieldAlert } from "lucide-react";
 import { sendMessage } from "@/app/actions/chat";
+import { FormError } from "@/components/action-form";
 
 type Msg = { id: string; senderId: string; body: string; flagged: boolean; createdAt: string };
+
+const time = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
+const day = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
 
 export function ChatBox({
   conversationId,
@@ -26,6 +31,7 @@ export function ChatBox({
   const lastRef = useRef(initial.at(-1)?.createdAt);
 
   const poll = useCallback(async () => {
+    if (document.hidden) return;
     const last = lastRef.current;
     try {
       const res = await fetch(`/api/conversations/${conversationId}${last ? `?after=${encodeURIComponent(last)}` : ""}`, { cache: "no-store" });
@@ -41,7 +47,7 @@ export function ChatBox({
       setCanSend(data.canSend);
       setReason(data.reason);
     } catch {
-      /* ignore */
+      /* offline — next tick */
     }
   }, [conversationId]);
 
@@ -56,7 +62,12 @@ export function ChatBox({
 
   useEffect(() => {
     const t = setInterval(poll, 4000);
-    return () => clearInterval(t);
+    const onVisible = () => !document.hidden && poll();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [poll]);
 
   useEffect(() => {
@@ -64,20 +75,30 @@ export function ChatBox({
   }, [messages.length]);
 
   return (
-    <div className="card flex flex-col h-[60vh]">
-      <div className="flex-1 overflow-y-auto p-5 space-y-3">
-        {messages.length === 0 && <p className="text-center text-sm text-muted mt-10">Say hello. Ask for extra photos or set up a video call.</p>}
-        {messages.map((m) => {
+    <div className="flex flex-col h-[calc(100dvh-15rem)] md:h-[60vh] min-h-80 card overflow-hidden">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-1.5 bg-paper/60">
+        {messages.length === 0 && (
+          <div className="text-center text-sm text-muted mt-10">
+            <p className="text-3xl" aria-hidden>💬</p>
+            <p className="mt-2">Say hi! Ask for extra photos or set up a quick video call.</p>
+          </div>
+        )}
+        {messages.map((m, i) => {
           const mine = m.senderId === me;
+          const newDay = i === 0 || day(messages[i - 1].createdAt) !== day(m.createdAt);
           return (
-            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[75%] px-4 py-2 text-sm whitespace-pre-wrap ${mine ? "bg-ink text-ivory" : "bg-ivory"}`}>
-                {m.body}
-                {m.flagged && (
-                  <p className={`mt-1 text-[0.7rem] ${mine ? "text-gold-soft" : "text-gold"}`}>
-                    ⚠ Keep deals on Cloro. Never share OTPs or scan a QR code to receive money.
-                  </p>
-                )}
+            <div key={m.id}>
+              {newDay && <p className="text-center text-xs text-muted my-3">{day(m.createdAt)}</p>}
+              <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[80%] px-4 py-2 text-[0.95rem] whitespace-pre-wrap break-words rounded-2xl ${mine ? "bg-brand text-white rounded-br-md" : "bg-white border border-line rounded-bl-md"}`}>
+                  {m.body}
+                  <span className={`block text-[0.65rem] mt-0.5 text-right ${mine ? "text-white/60" : "text-muted"}`}>{time(m.createdAt)}</span>
+                  {m.flagged && (
+                    <span className={`mt-1 flex gap-1 text-[0.72rem] ${mine ? "text-gold-soft" : "text-gold-dark"}`}>
+                      <ShieldAlert className="w-3.5 h-3.5 shrink-0" aria-hidden /> Keep deals on Cloro. Never share OTPs or scan a QR to receive money.
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -85,16 +106,17 @@ export function ChatBox({
         <div ref={bottomRef} />
       </div>
       {canSend ? (
-        <form ref={formRef} action={action} className="border-t border-line p-3 flex gap-2">
+        <form ref={formRef} action={action} className="border-t border-line p-2.5 flex gap-2 bg-white">
           <input type="hidden" name="conversationId" value={conversationId} />
-          <input name="body" className="input" placeholder="Be kind and respectful…" maxLength={2000} autoComplete="off" required />
-          <button className="btn btn-primary" disabled={pending}>Send</button>
+          <input name="body" className="input !rounded-full !min-h-11" placeholder="Write a message…" maxLength={2000} autoComplete="off" required aria-label="Message" />
+          <button className="btn btn-primary !px-4 !min-h-11" disabled={pending} aria-label="Send">
+            {pending ? <Loader2 className="w-4 h-4 animate-spin" /> : <SendHorizontal className="w-4 h-4" />}
+          </button>
         </form>
       ) : (
-        <p className="border-t border-line p-4 text-sm text-muted">{reason}</p>
+        <p className="border-t border-line p-4 text-sm text-muted bg-white">{reason}</p>
       )}
-      {state?.error && <p className="px-4 pb-3 text-sm text-red-700">{state.error}</p>}
-      {state?.ok && <p className="px-4 pb-3 text-sm text-gold">{state.ok}</p>}
+      {state?.error && <div className="px-4 pb-3 bg-white"><FormError message={state.error} /></div>}
     </div>
   );
 }

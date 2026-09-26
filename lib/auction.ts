@@ -66,6 +66,20 @@ export async function placeBid(listingId: string, bidder: User, amount: number):
   });
 }
 
+/**
+ * Index (0-based) of the first bidder at or after `from` who can still receive an offer:
+ * banned or currently frozen members are skipped so the item goes to someone who can complete it.
+ */
+async function nextEligibleIndex(tx: Tx, ranked: { bidderId: string }[], from: number, now: Date): Promise<number> {
+  for (let i = from; i < Math.min(ranked.length, MAX_FALLBACK_RANK); i++) {
+    const u = await tx.user.findUnique({ where: { id: ranked[i].bidderId }, select: { status: true, frozenUntil: true } });
+    if (!u || u.status === "BANNED") continue;
+    if (u.status === "FROZEN" && (!u.frozenUntil || u.frozenUntil > now)) continue;
+    return i;
+  }
+  return -1;
+}
+
 /** Closes one auction whose timer has run out. Safe to call repeatedly. */
 export async function settleListing(listingId: string, now = new Date()) {
   await db.$transaction(async (tx) => {
@@ -82,7 +96,13 @@ export async function settleListing(listingId: string, now = new Date()) {
       return;
     }
 
-    const top = ranked[0];
+    const idx = await nextEligibleIndex(tx, ranked, 0, now);
+    if (idx === -1) {
+      await tx.listing.update({ where: { id: listingId }, data: { status: "UNSOLD" } });
+      await notify(listing.sellerId, `“${listing.title}” ended, but none of the top bidders can complete a purchase right now. You can relist it.`, link, tx);
+      return;
+    }
+    const top = ranked[idx];
     const reserveMet = listing.reservePrice == null || top.amount >= listing.reservePrice;
     await tx.listing.update({ where: { id: listingId }, data: { status: "ENDED", reserveMet } });
 
@@ -92,7 +112,7 @@ export async function settleListing(listingId: string, now = new Date()) {
       return;
     }
 
-    await createOffer(tx, listing, top.bidderId, top.amount, 1, now);
+    await createOffer(tx, listing, top.bidderId, top.amount, idx + 1, now);
   });
 }
 
@@ -137,9 +157,10 @@ export async function offerToNext(listingId: string, sellerId: string): Promise<
 
     const ranked = await rankedBidders(listingId, tx);
     const last = await tx.deal.findFirst({ where: { listingId }, orderBy: { rank: "desc" } });
-    const nextRank = last ? last.rank + 1 : 1;
-    const next = ranked[nextRank - 1];
-    if (!next || nextRank > MAX_FALLBACK_RANK) {
+    const idx = await nextEligibleIndex(tx, ranked, last ? last.rank : 0, now);
+    const next = idx === -1 ? undefined : ranked[idx];
+    const nextRank = idx + 1;
+    if (!next) {
       await tx.listing.update({ where: { id: listingId }, data: { status: "UNSOLD" } });
       return { ok: false, error: "No more bidders to offer this to. The item is marked unsold — you can relist it." };
     }

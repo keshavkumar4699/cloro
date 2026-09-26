@@ -1,20 +1,29 @@
 @import "tailwindcss";
 
+/* Cloro design tokens — warm luxury: cream, emerald and gold. */
 @theme {
-  --color-ink: #0f0e0c;
-  --color-ink-soft: #2a2825;
-  --color-ivory: #f6f2ea;
-  --color-paper: #fbf9f5;
-  --color-gold: #a8844a;
-  --color-gold-soft: #d9c49c;
-  --color-muted: #6f695f;
-  --color-line: #e3dccf;
-  --font-serif: var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
-  --font-sans: var(--font-inter), "Inter", system-ui, sans-serif;
+  --color-paper: #fbf7f1;
+  --color-ivory: #f4ece0;
+  --color-blush: #f7e9df;
+  --color-ink: #1b1814;
+  --color-ink-soft: #3a342d;
+  --color-muted: #736a5f;
+  --color-line: #ebe2d4;
+  --color-brand: #0e4a3b;
+  --color-brand-dark: #093528;
+  --color-brand-soft: #e2eee8;
+  --color-gold: #b8873b;
+  --color-gold-dark: #8a6320;
+  --color-gold-soft: #f4e7cd;
+  --font-serif: var(--font-fraunces), Georgia, serif;
+  --font-sans: var(--font-jakarta), system-ui, sans-serif;
+  --shadow-soft: 0 1px 2px rgb(27 24 20 / 0.04), 0 10px 30px -14px rgb(27 24 20 / 0.18);
+  --shadow-lift: 0 2px 4px rgb(27 24 20 / 0.05), 0 20px 40px -18px rgb(27 24 20 / 0.28);
 }
 
 html {
   color-scheme: light;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -29,15 +38,22 @@ h2,
 h3,
 .serif {
   font-family: var(--font-serif);
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-optical-sizing: auto;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
 }
 
 .eyebrow {
-  font-size: 0.7rem;
-  letter-spacing: 0.22em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--color-muted);
+  color: var(--color-gold-dark);
 }
 
 @layer components {
@@ -46,104 +62,178 @@ h3,
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    padding: 0.7rem 1.4rem;
-    font-size: 0.78rem;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
+    min-height: 2.75rem;
+    padding: 0.65rem 1.35rem;
+    border-radius: 999px;
+    font-size: 0.925rem;
+    font-weight: 600;
     border: 1px solid transparent;
-    transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
     cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.98);
   }
   .btn:disabled {
-    opacity: 0.5;
+    opacity: 0.55;
     cursor: not-allowed;
   }
+  .btn-sm {
+    min-height: 2.25rem;
+    padding: 0.4rem 1rem;
+    font-size: 0.85rem;
+  }
   .btn-primary {
-    background: var(--color-ink);
-    color: var(--color-ivory);
+    background: var(--color-brand);
+    color: #fff;
+    box-shadow: 0 6px 16px -8px rgb(14 74 59 / 0.6);
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--color-ink-soft);
+    background: var(--color-brand-dark);
   }
   .btn-gold {
     background: var(--color-gold);
     color: #fff;
+    box-shadow: 0 6px 16px -8px rgb(184 135 59 / 0.7);
   }
   .btn-gold:hover:not(:disabled) {
-    background: #8f6f3b;
+    background: var(--color-gold-dark);
   }
   .btn-ghost {
-    background: transparent;
+    background: #fff;
     color: var(--color-ink);
-    border-color: var(--color-ink);
+    border-color: var(--color-line);
   }
   .btn-ghost:hover:not(:disabled) {
-    background: var(--color-ink);
-    color: var(--color-ivory);
+    border-color: var(--color-ink);
   }
   .btn-danger {
-    background: transparent;
-    color: #8a1c1c;
-    border-color: #8a1c1c;
+    background: #fff;
+    color: #9f1d1d;
+    border-color: #f1c9c9;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: #fdf2f2;
   }
   .input {
     width: 100%;
+    min-height: 2.9rem;
     background: #fff;
     border: 1px solid var(--color-line);
-    padding: 0.65rem 0.8rem;
-    font-size: 0.95rem;
+    border-radius: 0.85rem;
+    padding: 0.7rem 0.95rem;
+    font-size: 1rem;
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .input::placeholder {
+    color: #aaa196;
   }
   .input:focus {
-    border-color: var(--color-gold);
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 4px rgb(14 74 59 / 0.1);
   }
   .label {
     display: block;
-    font-size: 0.72rem;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--color-muted);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-ink-soft);
     margin-bottom: 0.4rem;
+  }
+  .hint {
+    font-size: 0.8rem;
+    color: var(--color-muted);
+    margin-top: 0.35rem;
   }
   .card {
     background: #fff;
     border: 1px solid var(--color-line);
+    border-radius: 1.25rem;
+    box-shadow: var(--shadow-soft);
   }
   .notice {
-    border-left: 2px solid var(--color-gold);
-    background: var(--color-ivory);
+    display: block;
+    border-radius: 1rem;
+    background: var(--color-gold-soft);
+    color: #5c4318;
     padding: 0.85rem 1rem;
     font-size: 0.9rem;
+    line-height: 1.5;
+  }
+  .notice-brand {
+    background: var(--color-brand-soft);
+    color: var(--color-brand-dark);
   }
   .badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.15rem 0.55rem;
-    font-size: 0.68rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    border: 1px solid var(--color-line);
+    gap: 0.3rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--color-ivory);
     color: var(--color-ink-soft);
-    background: var(--color-paper);
   }
   .badge-gold {
-    border-color: var(--color-gold-soft);
-    color: var(--color-gold);
+    background: var(--color-gold-soft);
+    color: var(--color-gold-dark);
+  }
+  .badge-brand {
+    background: var(--color-brand-soft);
+    color: var(--color-brand);
+  }
+  .badge-red {
+    background: #fdecec;
+    color: #9f1d1d;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-line);
+    background: #fff;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: border-color 0.2s, background 0.2s;
+    white-space: nowrap;
+  }
+  .chip:hover {
+    border-color: var(--color-ink);
+  }
+  .chip-active {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+    color: #fff;
   }
   .link {
     text-decoration: underline;
     text-underline-offset: 3px;
-    text-decoration-color: var(--color-gold-soft);
+    text-decoration-color: rgb(184 135 59 / 0.5);
   }
   .link:hover {
     text-decoration-color: var(--color-gold);
   }
+  .section-title {
+    font-family: var(--font-serif);
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .fade-in {
-  animation: fade 0.6s ease both;
+  animation: fade 0.5s ease both;
 }
 @keyframes fade {
   from {
@@ -155,8 +245,27 @@ h3,
     transform: none;
   }
 }
+.toast-in {
+  animation: toast 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+@keyframes toast {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .fade-in {
+  .fade-in,
+  .toast-in {
     animation: none;
   }
+}
+
+/* Grid children may shrink below their content (prevents horizontal scroll from chip rows and long words). */
+.grid > * {
+  min-width: 0;
 }

@@ -2,9 +2,12 @@
 
 import { useActionState, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Clock, Gavel, Loader2 } from "lucide-react";
 import { bidAction } from "@/app/actions/listings";
 import { Countdown } from "@/components/countdown";
+import { FormError } from "@/components/action-form";
 import { formatINR } from "@/lib/format";
+import { bidIncrement } from "@/lib/rules";
 
 type LiveState = {
   status: string;
@@ -37,9 +40,15 @@ export function BidPanel({
   const [polled, setPolled] = useState<LiveState | null>(null);
   // Server-rendered props refresh after our own bid; polling picks up everyone else's.
   const live = polled && polled.bidCount >= initial.bidCount ? polled : initial;
-  const [state, action, pending] = useActionState(bidAction, undefined);
+  const [amount, setAmount] = useState<string>("");
+  const [state, action, pending] = useActionState(async (prev: Parameters<typeof bidAction>[0], fd: FormData) => {
+    const result = await bidAction(prev, fd);
+    if (!result?.error) setAmount("");
+    return result;
+  }, undefined);
 
   const refresh = useCallback(async () => {
+    if (document.hidden) return; // don't poll from background tabs
     try {
       const res = await fetch(`/api/listings/${listingId}`, { cache: "no-store" });
       if (!res.ok) return;
@@ -54,50 +63,86 @@ export function BidPanel({
   useEffect(() => {
     if (live.status !== "LIVE") return;
     const t = setInterval(refresh, 5000);
-    return () => clearInterval(t);
+    const onVisible = () => !document.hidden && refresh();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [live.status, refresh]);
 
   const isLive = live.status === "LIVE";
+  const step = bidIncrement(live.currentPrice);
+  const quick = [live.minNext, live.minNext + step, live.minNext + step * 3].filter((v) => !minorCap || v <= minorCap);
+  // Show the minimum until the member types; never rewrite what they're typing.
+  const value = amount === "" ? String(live.minNext) : amount;
+  const tooLow = amount !== "" && Number(amount) < live.minNext;
+  const overCap = !!minorCap && live.minNext > minorCap;
 
   return (
-    <div className="card p-6 space-y-5">
-      <div className="flex items-baseline justify-between">
+    <div className="card p-5 md:p-6">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="eyebrow">{live.bidCount ? "Current bid" : "Starting bid"}</p>
-          <p className="serif text-5xl mt-1">{formatINR(live.currentPrice)}</p>
-          <p className="text-xs text-muted mt-1">+ shipping ~{formatINR(shippingEstimate)} paid by buyer (if shipped)</p>
+          <p className="text-sm text-muted">{live.bidCount ? "Current bid" : "Starting bid"}</p>
+          <p className="serif text-4xl md:text-5xl mt-1">{formatINR(live.currentPrice)}</p>
+          <p className="text-xs text-muted mt-1.5">+ ~{formatINR(shippingEstimate)} shipping if shipped · paid by buyer</p>
         </div>
-        <div className="text-right">
-          <p className="eyebrow">{isLive ? "Ends in" : "Status"}</p>
-          <p className="text-lg mt-1">{isLive ? <Countdown endsAt={live.endsAt} onEnd={refresh} /> : live.status === "SOLD" ? "Sold" : "Ended"}</p>
+        <div className={`badge !py-1.5 !px-3 ${isLive ? "badge-brand" : ""}`}>
+          <Clock className="w-3.5 h-3.5" aria-hidden />
+          {isLive ? <Countdown endsAt={live.endsAt} onEnd={refresh} /> : live.status === "SOLD" ? "Sold" : "Ended"}
         </div>
-      </div>
-      <div className="flex gap-2 flex-wrap text-xs">
-        <span className="badge">{live.bidCount} bid{live.bidCount === 1 ? "" : "s"}</span>
-        {live.hasReserve && <span className={`badge ${live.reserveMet ? "badge-gold" : ""}`}>{live.reserveMet ? "Reserve met ✓" : "Reserve not met"}</span>}
-        {isTop && isLive && <span className="badge badge-gold">You&apos;re the highest bidder</span>}
       </div>
 
-      {isLive && canBid && (
-        <form action={action} className="space-y-3">
+      <div className="mt-4 flex gap-2 flex-wrap">
+        <span className="badge">{live.bidCount} bid{live.bidCount === 1 ? "" : "s"}</span>
+        {live.hasReserve && <span className={`badge ${live.reserveMet ? "badge-brand" : "badge-gold"}`}>{live.reserveMet ? "Reserve met ✓" : "Reserve not met yet"}</span>}
+        {isTop && isLive && <span className="badge badge-gold">🎉 You&apos;re winning</span>}
+      </div>
+
+      {isLive && canBid && !overCap && (
+        <form action={action} className="mt-5 space-y-3">
           <input type="hidden" name="listingId" value={listingId} />
-          <label className="label" htmlFor="amount">Your bid (min {formatINR(live.minNext)})</label>
-          <div className="flex gap-2">
-            <input key={live.minNext} id="amount" name="amount" type="number" min={live.minNext} max={minorCap} step="1"
-              defaultValue={live.minNext} className="input" required />
-            <button className="btn btn-primary whitespace-nowrap" disabled={pending}>{pending ? "…" : "Place bid"}</button>
+          <div className="flex gap-2 flex-wrap" role="group" aria-label="Quick bids">
+            {quick.map((v) => (
+              <button key={v} type="button" onClick={() => setAmount(String(v))} className={`chip !py-1.5 ${Number(value) === v ? "chip-active" : ""}`}>
+                {formatINR(v)}
+              </button>
+            ))}
           </div>
-          <label className="flex items-start gap-2 text-xs text-muted">
-            <input type="checkbox" name="promise" required className="mt-0.5" />
-            A bid is a promise. If I win, I&apos;ll complete the purchase.
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted">₹</span>
+              <input
+                name="amount"
+                type="number"
+                inputMode="numeric"
+                min={live.minNext}
+                max={minorCap}
+                step="1"
+                value={value}
+                onChange={(e) => setAmount(e.target.value)}
+                className="input !pl-8 !rounded-full"
+                aria-label={`Your bid, at least ${formatINR(live.minNext)}`}
+                required
+              />
+            </div>
+            <button className="btn btn-primary" disabled={pending}>
+              {pending ? <Loader2 className="w-4 h-4 animate-spin" aria-label="Placing bid" /> : <><Gavel className="w-4 h-4" aria-hidden /> Bid</>}
+            </button>
+          </div>
+          {tooLow && <p className="text-xs text-gold-dark">The minimum bid right now is {formatINR(live.minNext)}.</p>}
+          <label className="flex items-start gap-2 text-sm text-ink-soft">
+            <input type="checkbox" name="promise" required className="mt-0.5 accent-brand w-4 h-4" />
+            I&apos;ll buy it if I win — a bid is a promise.
           </label>
-          {minorCap && <p className="text-xs text-muted">Members under 18 can bid up to {formatINR(minorCap)}.</p>}
-          {state?.error && <p className="text-sm text-red-700" role="alert">{state.error}</p>}
-          {state?.ok && <p className="text-sm text-emerald-800" role="status">{state.ok}</p>}
+          <FormError message={state?.error} />
         </form>
       )}
-      {isLive && !canBid && blockedReason && <div className="text-sm">{blockedReason}</div>}
-      {isLive && <p className="text-xs text-muted">Bids in the last 2 minutes extend the auction by 2 minutes — no sniping.</p>}
+      {isLive && canBid && overCap && (
+        <p className="notice mt-5">Bidding has gone past {formatINR(minorCap!)}, the limit for members under 18.</p>
+      )}
+      {isLive && !canBid && blockedReason && <div className="notice notice-brand mt-5">{blockedReason}</div>}
+      {isLive && <p className="text-xs text-muted mt-4">Bids in the last 2 minutes add 2 more minutes, so everyone gets a fair chance.</p>}
     </div>
   );
 }

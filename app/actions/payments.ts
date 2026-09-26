@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ok } from "@/lib/flash";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { ageBand, ageOn } from "@/lib/rules";
@@ -32,5 +33,6 @@ export async function confirmPassPayment(input: { orderId: string; paymentId?: s
     await completePassPayment(input.orderId, `mockpay_${Date.now()}`, user.id);
   }
   revalidatePath("/membership");
+  await ok("Payment received — your listing pass is active. Happy selling!");
   return { ok: true };
 }

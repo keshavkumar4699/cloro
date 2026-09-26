@@ -5,11 +5,14 @@ import { revalidatePath } from "next/cache";
 import type { Ticket, TicketStatus, User } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ActionError, getCurrentUser, isStaff } from "@/lib/session";
+import { ok } from "@/lib/flash";
 import { toActionState, type ActionState } from "@/lib/action-state";
 import { saveImage } from "@/lib/storage";
 import { TICKET_CATEGORIES } from "@/lib/catalog";
 import { ageBand, ageOn, FREEZE_DAYS, STRIKE_EXPIRY_DAYS, strikePenalty } from "@/lib/rules";
 import { audit, notify } from "@/lib/notify";
+import { rateLimit } from "@/lib/rate-limit";
+import { withdrawBannedMember } from "@/lib/moderation";
 
 async function signedIn() {
   const user = await getCurrentUser();
@@ -43,6 +46,8 @@ export async function createTicket(_: ActionState, formData: FormData): Promise<
     const body = String(formData.get("body") ?? "").trim();
     if (subject.length < 4 || subject.length > 120) return { error: "Add a short subject (4–120 characters)." };
     if (body.length < 10) return { error: "Describe what happened in a bit more detail." };
+    if (body.length > 5000) return { error: "Please keep the description under 5000 characters." };
+    await rateLimit("ticket", user.id);
 
     // Optional context: a deal, a listing, a chat, or a user being reported.
     let againstId: string | null = null;
@@ -76,7 +81,10 @@ export async function createTicket(_: ActionState, formData: FormData): Promise<
       if (listing.sellerId !== user.id) againstId = listing.sellerId;
     }
     const againstIn = String(formData.get("againstId") ?? "");
-    if (againstIn && !againstId && againstIn !== user.id) againstId = againstIn;
+    if (againstIn && !againstId && againstIn !== user.id) {
+      if (!(await db.user.findUnique({ where: { id: againstIn }, select: { id: true } }))) return { error: "Member not found." };
+      againstId = againstIn;
+    }
 
     const against = againstId ? await db.user.findUnique({ where: { id: againstId } }) : null;
     const serious = ["HARASSMENT", "SCAM", "COUNTERFEIT"].includes(category);
@@ -97,6 +105,7 @@ export async function createTicket(_: ActionState, formData: FormData): Promise<
       },
     });
     id = ticket.id;
+    await ok("Thanks for telling us. A real person will reply here, usually within 48 hours.");
 
     if (priority === "URGENT" && againstId) {
       // Harassment involving a minor: freeze the reported account while it is reviewed.
@@ -139,7 +148,7 @@ export async function replyTicket(_: ActionState, formData: FormData): Promise<A
     }
     revalidatePath(`/support/${ticket.id}`);
     revalidatePath(`/admin/tickets/${ticket.id}`);
-    return { ok: internal ? "Internal note added." : "Reply sent." };
+    return await ok(internal ? "Internal note added." : "Reply sent.");
   } catch (e) {
     return toActionState(e);
   }
@@ -182,7 +191,7 @@ export async function updateTicket(_: ActionState, formData: FormData): Promise<
     }
     await audit(user.id, `ticket:${op}`, ticket.id);
     revalidatePath(`/admin/tickets/${ticket.id}`);
-    return { ok: "Updated." };
+    return await ok("Updated.");
   } catch (e) {
     return toActionState(e);
   }
@@ -197,13 +206,15 @@ export async function proposeStrike(_: ActionState, formData: FormData): Promise
     if (reason.length < 10) return { error: "Describe the proven misconduct and the evidence." };
     if (formData.get("proven") !== "on") return { error: "Strikes are only for misconduct proven by evidence, after hearing both sides." };
     const fraud = formData.get("fraud") === "on";
+    if (!(await db.user.findUnique({ where: { id: userId }, select: { id: true } }))) return { error: "Member not found." };
+    if (userId === user.id) return { error: "You can't give yourself a strike." };
     const strike = await db.strike.create({ data: { userId, ticketId, reason, fraud, proposedById: user.id } });
     await audit(user.id, "strike:propose", userId, reason);
     if (user.role === "ADMIN") return applyStrike(strike.id, user);
     const admins = await db.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
     for (const a of admins) await notify(a.id, "A strike is waiting for your confirmation.", "/admin/strikes");
     revalidatePath("/admin/strikes");
-    return { ok: "Strike proposed. An admin will confirm it." };
+    return await ok("Strike proposed. An admin will confirm it.");
   } catch (e) {
     return toActionState(e);
   }
@@ -230,6 +241,7 @@ async function applyStrike(strikeId: string, admin: User): Promise<ActionState> 
   const penalty = strikePenalty(active, strike.fraud);
   if (penalty === "BAN") {
     await db.user.update({ where: { id: strike.userId }, data: { status: "BANNED" } });
+    await withdrawBannedMember(strike.userId);
   } else if (penalty === "FREEZE") {
     await db.user.update({ where: { id: strike.userId }, data: { status: "FROZEN", frozenUntil: new Date(now.getTime() + FREEZE_DAYS * 86400000) } });
   } else {
@@ -244,7 +256,7 @@ async function applyStrike(strikeId: string, admin: User): Promise<ActionState> 
   await notify(strike.userId, message, "/dashboard");
   await audit(admin.id, `strike:confirm:${penalty}`, strike.userId, strike.reason);
   revalidatePath("/admin/strikes");
-  return { ok: `Strike confirmed — ${penalty.toLowerCase()} applied.` };
+  return await ok(`Strike confirmed — ${penalty.toLowerCase()} applied.`);
 }
 
 export async function decideStrike(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -266,7 +278,7 @@ export async function decideStrike(_: ActionState, formData: FormData): Promise<
       return { error: "That action isn't available for this strike." };
     }
     revalidatePath("/admin/strikes");
-    return { ok: "Done." };
+    return await ok("Done.");
   } catch (e) {
     return toActionState(e);
   }
@@ -284,7 +296,7 @@ export async function appealStrike(_: ActionState, formData: FormData): Promise<
     const admins = await db.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
     for (const a of admins) await notify(a.id, "A member appealed a strike.", "/admin/strikes");
     revalidatePath("/dashboard");
-    return { ok: "Appeal sent. We'll review it and let you know." };
+    return await ok("Appeal sent. We'll review it and let you know.");
   } catch (e) {
     return toActionState(e);
   }
@@ -296,7 +308,10 @@ export async function moderateUser(_: ActionState, formData: FormData): Promise<
     const userId = String(formData.get("userId"));
     const op = String(formData.get("op"));
     if (userId === admin.id) return { error: "You can't change your own account here." };
-    if (op === "ban") await db.user.update({ where: { id: userId }, data: { status: "BANNED" } });
+    if (op === "ban") {
+      await db.user.update({ where: { id: userId }, data: { status: "BANNED" } });
+      await withdrawBannedMember(userId);
+    }
     else if (op === "reinstate") await db.user.update({ where: { id: userId }, data: { status: "ACTIVE", frozenUntil: null } });
     else if (op === "role") {
       const role = String(formData.get("role"));
@@ -305,7 +320,7 @@ export async function moderateUser(_: ActionState, formData: FormData): Promise<
     } else return { error: "Unknown action." };
     await audit(admin.id, `user:${op}`, userId, String(formData.get("role") ?? ""));
     revalidatePath("/admin/users");
-    return { ok: "Updated." };
+    return await ok("Updated.");
   } catch (e) {
     return toActionState(e);
   }

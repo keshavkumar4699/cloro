@@ -23,9 +23,32 @@ const STATUS_TEXT: Record<string, string> = {
   CANCELLED: "Cancelled",
 };
 
+const STEPS = ["Offered", "Accepted", "Done"];
+
+function DealSteps({ status }: { status: string }) {
+  const stopped = ["DECLINED", "EXPIRED", "CANCELLED"].includes(status);
+  const reached = status === "COMPLETED" ? 3 : status === "ACCEPTED" ? 2 : 1;
+  return (
+    <ol className="mt-8 flex items-center gap-2" aria-label="Deal progress">
+      {STEPS.map((label, i) => {
+        const done = !stopped && i < reached;
+        return (
+          <li key={label} className="flex items-center gap-2 flex-1 last:flex-none">
+            <span className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-sm font-bold ${done ? "bg-brand text-white" : stopped && i === 0 ? "bg-red-100 text-red-700" : "bg-ivory text-muted"}`}>
+              {done ? "✓" : i + 1}
+            </span>
+            <span className={`text-sm ${done ? "font-semibold" : "text-muted"}`}>{label}</span>
+            {i < STEPS.length - 1 && <span className={`flex-1 h-0.5 rounded ${!stopped && i + 1 < reached ? "bg-brand" : "bg-line"}`} />}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
   const { id } = await params;
-  const user = await requireMember();
+  const user = await requireMember({ allowAgedOut: true, next: `/deals/${id}` });
   await settleDue();
   const deal = await db.deal.findUnique({
     where: { id },
@@ -48,26 +71,28 @@ export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
   const total = deal.amount + (deal.method === "SHIP" ? deal.listing.shippingEstimate : 0);
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-12">
+    <div className="mx-auto max-w-4xl px-4 md:px-6 py-8 md:py-12">
       <p className="eyebrow">{isBuyer ? "You're buying" : "You're selling"}</p>
-      <div className="mt-4 flex gap-6 items-center">
+      <div className="mt-3 flex gap-4 items-center">
         {deal.listing.images[0] && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={deal.listing.images[0].url} alt="" className="w-24 h-24 object-cover" />
+          <img src={deal.listing.images[0].url} alt="" className="w-20 h-20 md:w-24 md:h-24 rounded-2xl object-cover" />
         )}
-        <div>
-          <Link href={`/listings/${deal.listingId}`} className="serif text-4xl hover:text-gold">{deal.listing.title}</Link>
-          <p className="text-muted mt-1">
-            {formatINR(deal.amount)} · Size {deal.listing.size} ({deal.listing.sizeSystem}) · {deal.rank === 1 ? "Winning bid" : `Bidder #${deal.rank}`}
+        <div className="min-w-0">
+          <Link href={`/listings/${deal.listingId}`} className="serif text-2xl md:text-4xl hover:text-gold line-clamp-2">{deal.listing.title}</Link>
+          <p className="text-muted mt-1 text-sm">
+            <strong className="text-ink">{formatINR(deal.amount)}</strong> · Size {deal.listing.size} · {deal.rank === 1 ? "Winning bid" : `Bidder #${deal.rank}`}
           </p>
         </div>
       </div>
 
-      <div className="mt-10 grid md:grid-cols-[1.5fr_1fr] gap-10">
-        <div className="space-y-8">
-          <div className="card p-6">
-            <p className="eyebrow">Status</p>
-            <p className="serif text-3xl mt-1">{STATUS_TEXT[deal.status]}</p>
+      <DealSteps status={deal.status} />
+
+      <div className="mt-8 grid md:grid-cols-[1.5fr_1fr] gap-8">
+        <div className="space-y-6">
+          <div className="card p-5 md:p-6">
+            <p className="text-sm text-muted">Status</p>
+            <p className="serif text-2xl md:text-3xl mt-1">{STATUS_TEXT[deal.status]}</p>
             {deal.status === "OFFERED" && (
               <p className="text-sm text-muted mt-2">Respond within <Countdown endsAt={deal.respondBy.toISOString()} /> (by {formatDateTime(deal.respondBy)}).</p>
             )}
@@ -79,14 +104,14 @@ export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
 
           {deal.status === "OFFERED" && isBuyer && (
             <div className="space-y-4">
-              <ActionForm action={acceptDeal} submit="Accept" variant="gold" className="card p-6 space-y-4">
+              <ActionForm action={acceptDeal} submit="Accept & continue" className="card p-5 md:p-6 space-y-4">
                 <input type="hidden" name="dealId" value={deal.id} />
-                <p className="serif text-2xl">How will you get it?</p>
-                <label className="flex items-start gap-3 text-sm">
+                <p className="serif text-2xl">🎉 You won! How would you like to get it?</p>
+                <label className="flex items-start gap-3 text-sm rounded-xl border border-line p-3 has-[:checked]:border-brand has-[:checked]:bg-brand-soft/40 cursor-pointer">
                   <input type="radio" name="method" value="MEETUP" disabled={!deal.listing.meetupPossible} required className="mt-1" />
                   <span><strong>Meet in person</strong> — inspect it, then pay by UPI or cash. {deal.listing.meetupPossible ? `Seller is in ${deal.listing.city}.` : "(The seller only ships.)"}</span>
                 </label>
-                <label className="flex items-start gap-3 text-sm">
+                <label className="flex items-start gap-3 text-sm rounded-xl border border-line p-3 has-[:checked]:border-brand has-[:checked]:bg-brand-soft/40 cursor-pointer">
                   <input type="radio" name="method" value="SHIP" required className="mt-1" />
                   <span><strong>Video call, then shipping</strong> — see the item live on a video call, pay the seller, and they ship it. You pay shipping (~{formatINR(deal.listing.shippingEstimate)}).</span>
                 </label>
@@ -141,12 +166,12 @@ export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
           )}
 
           {deal.status === "COMPLETED" && !myReview && (
-            <ActionForm action={leaveReview} submit="Submit rating" className="card p-6 space-y-3">
+            <ActionForm action={leaveReview} submit="Submit rating" className="card p-5 md:p-6 space-y-3">
               <input type="hidden" name="dealId" value={deal.id} />
               <p className="serif text-2xl">Rate {otherRep?.user.name ?? "the other member"}</p>
-              <div className="flex gap-4">
+              <div className="flex gap-2 flex-wrap">
                 {[5, 4, 3, 2, 1].map((n) => (
-                  <label key={n} className="flex items-center gap-1 text-sm"><input type="radio" name="rating" value={n} required /> {n}★</label>
+                  <label key={n} className="chip cursor-pointer has-[:checked]:chip-active has-[:checked]:bg-ink has-[:checked]:text-white"><input type="radio" name="rating" value={n} required className="sr-only" /> {n}★</label>
                 ))}
               </div>
               <textarea name="comment" className="input" rows={2} maxLength={500} placeholder="Optional: how did it go?" />

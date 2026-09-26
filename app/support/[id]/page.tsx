@@ -24,7 +24,7 @@ export default async function TicketPage({ params }: PageProps<"/support/[id]">)
   if (!isOwner && !isAgainst) notFound();
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-14">
+    <div className="mx-auto max-w-3xl px-4 md:px-6 py-8 md:py-12">
       <Link href="/support" className="eyebrow hover:text-ink">← Support</Link>
       <h1 className="text-4xl mt-3">{ticket.subject}</h1>
       <p className="text-sm text-muted mt-2">{ticketCategoryLabel(ticket.category)} · {ticket.status.replace("_", " ").toLowerCase()}</p>
@@ -44,7 +44,7 @@ export default async function TicketPage({ params }: PageProps<"/support/[id]">)
         <ActionForm action={replyTicket} submit="Reply" className="mt-8 space-y-3">
           <input type="hidden" name="ticketId" value={ticket.id} />
           <textarea name="body" rows={4} className="input" required />
-          <input name="attachments" type="file" accept="image/jpeg,image/png,image/webp" multiple className="text-sm" />
+          <input name="attachments" type="file" accept="image/jpeg,image/png,image/webp" multiple className="block w-full text-sm text-muted file:mr-3 file:rounded-full file:border file:border-line file:bg-white file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:border-ink" />
         </ActionForm>
       )}
     </div>

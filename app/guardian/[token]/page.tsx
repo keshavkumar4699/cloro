@@ -16,9 +16,9 @@ export default async function GuardianApprovePage({ params }: PageProps<"/guardi
   const minorAge = req.minor.dob ? ageOn(req.minor.dob) : null;
 
   return (
-    <div className="mx-auto max-w-xl px-6 py-20 fade-in">
+    <div className="mx-auto max-w-xl px-4 md:px-6 py-10 md:py-16 fade-in">
       <p className="eyebrow">Guardian approval</p>
-      <h1 className="text-5xl mt-3">{req.minor.aadhaarName ?? req.minor.name} wants to join Cloro</h1>
+      <h1 className="text-4xl md:text-5xl mt-3">{req.minor.aadhaarName ?? req.minor.name} wants to join Cloro</h1>
 
       <div className="mt-8 space-y-3 text-muted leading-relaxed">
         <p>

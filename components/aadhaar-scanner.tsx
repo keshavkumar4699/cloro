@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import jsQR from "jsqr";
+import { Camera } from "lucide-react";
 import { ActionForm } from "@/components/action-form";
 import { verifyAadhaar } from "@/app/actions/account";
 
@@ -52,14 +53,15 @@ export function AadhaarScanner() {
 
   return (
     <div className="space-y-6">
-      <label className="block card p-8 text-center cursor-pointer hover:border-gold transition-colors">
-        <span className="serif text-2xl">{busy ? "Reading…" : qr ? "Scan again" : "Photograph or upload your Aadhaar"}</span>
-        <span className="block text-sm text-muted mt-2">Front or back — whichever side has the large QR code. e-Aadhaar PDFs: use a screenshot of the QR.</span>
-        <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={onFile} disabled={busy} />
+      <label className="block rounded-3xl border-2 border-dashed border-line bg-white p-8 text-center cursor-pointer hover:border-brand transition-colors">
+        <span className="mx-auto w-14 h-14 rounded-full bg-ivory flex items-center justify-center"><Camera className="w-6 h-6 text-brand" aria-hidden /></span>
+        <span className="block font-semibold mt-3">{busy ? "Reading the QR code…" : qr ? "Scan a different photo" : "Take or upload a photo"}</span>
+        <span className="block text-sm text-muted mt-1">Use the side with the big QR code, in good light.</span>
+        <input type="file" accept="image/*" className="sr-only" onChange={onFile} disabled={busy} />
       </label>
       {status && <p className={`text-sm ${qr ? "text-emerald-800" : "text-muted"}`}>{status}</p>}
       {qr && (
-        <ActionForm action={verifyAadhaar} submit="Verify my identity" variant="gold">
+        <ActionForm action={verifyAadhaar} submit="Verify me" full>
           <input type="hidden" name="qr" value={qr} />
         </ActionForm>
       )}

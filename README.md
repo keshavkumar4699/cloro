@@ -52,7 +52,18 @@ A members-only auction house for Gen Z in India. Verified members list pre-loved
   - safety banners in chat
   - meetup and shipping checklists
   - a help centre with a safety guide
-- **In-app alerts only**, with no email or SMS.
+- **In-app alerts only**, with no email or SMS. Opening an alert marks it read, and success messages appear as toasts.
+- **Safety nets:**
+  - Banned or frozen bidders are skipped when an item is offered.
+  - Banning a member withdraws their live items and cancels their open deals, telling everyone affected.
+  - Members who are frozen or have turned 31 can still finish deals already in progress.
+  - Rate limits cover messages, questions, tickets and listings.
+  - Guardian links expire after 7 days.
+  - `next=` redirects only go to pages on Cloro.
+
+## Design
+
+Warm luxury: cream and blush backgrounds, deep emerald for actions and gold for highlights. Headings use Fraunces and body text Plus Jakarta Sans. Cards and pill buttons have soft rounded corners, with icons from lucide-react. On mobile there's a bottom tab bar with a central "Sell" button, and item rows scroll sideways.
 
 ## Stack and running costs
 
