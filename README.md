@@ -65,6 +65,25 @@ A members-only auction house for Gen Z in India. Verified members list pre-loved
 
 Warm luxury: cream and blush backgrounds, deep emerald for actions and gold for highlights. Headings use Fraunces and body text Plus Jakarta Sans. Cards and pill buttons have soft rounded corners, with icons from lucide-react. On mobile there's a bottom tab bar with a central "Sell" button, and item rows scroll sideways.
 
+## Running Cloro as an admin
+
+1. **Become admin:** set `SEED_ADMIN_EMAIL` to your Gmail and run `npm run db:seed`. To make a friend a moderator, go to **Desk → Members**, open their member file and set their role to Moderator.
+2. **What each role can do:**
+   - **Moderators:** handle tickets, open member files, add staff notes, remove items and propose strikes.
+   - **Admins:** everything moderators can do, plus confirm strikes, freeze, ban or reinstate members, reset a member's verification, change roles and read the audit log.
+3. **Daily routine at `/admin`:**
+   1. Check the overview numbers.
+   2. Work the ticket queue from Urgent down; tickets waiting more than 48 hours show in red.
+   3. Clear pending strikes and appeals.
+4. **Member file (`/admin/users/[id]`):** everything about one member in one place:
+   - identity, age band and guardian status
+   - items, bids and deals
+   - reports about them and tickets they opened
+   - strikes and staff notes
+   - admin actions: **freeze** (24 hours, 7 days or until reviewed), **reset verification**, **set role**, **ban** (with a reason)
+5. **Removing a single item:** open the item and use **Staff tools → Remove item** with a reason. The seller and bidders are told, and the seller isn't banned.
+6. **Accountability:** every staff action, and every time staff open a private chat, is recorded in the **Audit log**.
+
 ## Stack and running costs
 
 - **Stack:** Next.js 16 (App Router, Server Actions), TypeScript, Tailwind CSS 4, PostgreSQL with Prisma 6, and Auth.js v5.

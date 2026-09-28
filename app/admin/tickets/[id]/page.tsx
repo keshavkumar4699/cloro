@@ -90,7 +90,12 @@ export default async function AdminTicketPage({ params }: PageProps<"/admin/tick
           </div>
         )}
         {ticket.listing && <Link href={`/listings/${ticket.listing.id}`} className="link text-sm block">Listing: {ticket.listing.title}</Link>}
-        {people.map((p) => <MemberCard key={p.label} rep={p.rep} label={p.label} />)}
+        {people.map((p) => (
+          <div key={p.label} className="space-y-1.5">
+            <MemberCard rep={p.rep} label={p.label} />
+            <Link href={`/admin/users/${p.rep.user.id}`} className="link text-xs">Open member file →</Link>
+          </div>
+        ))}
 
         <div className="card p-5 space-y-4">
           <p className="eyebrow">Handle</p>

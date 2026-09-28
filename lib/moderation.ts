@@ -23,3 +23,23 @@ export async function withdrawBannedMember(userId: string) {
     await notify(other, `The deal for “${d.listing.title}” was cancelled because the other member's account was closed.${extra}`, `/deals/${d.id}`);
   }
 }
+
+/** Staff take down one item (e.g. counterfeit or prohibited) without banning the seller. */
+export async function removeListingByStaff(listingId: string, reason: string) {
+  const listing = await db.listing.findUnique({ where: { id: listingId }, select: { id: true, title: true, sellerId: true, status: true } });
+  if (!listing) return { ok: false as const, error: "Item not found." };
+  if (listing.status === "SOLD") return { ok: false as const, error: "This item was already sold, so it can't be removed." };
+  if (listing.status === "CANCELLED") return { ok: false as const, error: "This item is already off Cloro." };
+
+  await db.listing.update({ where: { id: listingId }, data: { status: "CANCELLED", removedReason: reason } });
+  const deals = await db.deal.findMany({ where: { listingId, status: { in: ["OFFERED", "ACCEPTED"] } } });
+  for (const d of deals) {
+    await db.deal.update({ where: { id: d.id }, data: { status: "CANCELLED", cancelReason: "The item was removed by the Cloro team." } });
+  }
+  const link = `/listings/${listingId}`;
+  await notify(listing.sellerId, `Your item “${listing.title}” was removed by the Cloro team: ${reason}. Contact support if you think this is a mistake.`, link);
+  for (const bidderId of await topBidderIds(listingId, 50)) {
+    await notify(bidderId, `“${listing.title}” was removed by the Cloro team, so your bid no longer applies.`, link);
+  }
+  return { ok: true as const };
+}

@@ -12,7 +12,7 @@ import { TICKET_CATEGORIES } from "@/lib/catalog";
 import { ageBand, ageOn, FREEZE_DAYS, STRIKE_EXPIRY_DAYS, strikePenalty } from "@/lib/rules";
 import { audit, notify } from "@/lib/notify";
 import { rateLimit } from "@/lib/rate-limit";
-import { withdrawBannedMember } from "@/lib/moderation";
+import { removeListingByStaff, withdrawBannedMember } from "@/lib/moderation";
 
 async function signedIn() {
   const user = await getCurrentUser();
@@ -318,9 +318,104 @@ export async function moderateUser(_: ActionState, formData: FormData): Promise<
       if (!["USER", "MODERATOR", "ADMIN"].includes(role)) return { error: "Bad role." };
       await db.user.update({ where: { id: userId }, data: { role: role as User["role"] } });
     } else return { error: "Unknown action." };
-    await audit(admin.id, `user:${op}`, userId, String(formData.get("role") ?? ""));
+    await audit(admin.id, `user:${op}`, userId, String(formData.get("reason") ?? formData.get("role") ?? ""));
     revalidatePath("/admin/users");
+    revalidatePath(`/admin/users/${userId}`);
     return await ok("Updated.");
+  } catch (e) {
+    return toActionState(e);
+  }
+}
+
+export async function removeListing(_: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const user = await staff();
+    const listingId = String(formData.get("listingId"));
+    const reason = String(formData.get("reason") ?? "").trim();
+    if (reason.length < 5) return { error: "Give a short reason — the seller will see it." };
+    const res = await removeListingByStaff(listingId, reason.slice(0, 300));
+    if (!res.ok) return { error: res.error };
+    await audit(user.id, "listing:remove", listingId, reason);
+    revalidatePath(`/listings/${listingId}`);
+    return await ok("Item removed. The seller and bidders have been told.");
+  } catch (e) {
+    return toActionState(e);
+  }
+}
+
+const FREEZE_OPTIONS: Record<string, number | null> = { "24h": 86400000, "7d": 7 * 86400000, review: null };
+
+export async function freezeUser(_: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const admin = await staff("ADMIN");
+    const userId = String(formData.get("userId"));
+    if (userId === admin.id) return { error: "You can't freeze your own account." };
+    const target = await db.user.findUnique({ where: { id: userId } });
+    if (!target) return { error: "Member not found." };
+    if (target.status === "BANNED") return { error: "This member is banned. Reinstate them first." };
+
+    if (formData.get("op") === "unfreeze") {
+      await db.user.update({ where: { id: userId }, data: { status: "ACTIVE", frozenUntil: null } });
+      await notify(userId, "Your account is active again. Thanks for your patience.", "/dashboard");
+      await audit(admin.id, "user:unfreeze", userId);
+      revalidatePath(`/admin/users/${userId}`);
+      return await ok("Unfrozen.");
+    }
+    const duration = String(formData.get("duration"));
+    if (!(duration in FREEZE_OPTIONS)) return { error: "Choose how long." };
+    const reason = String(formData.get("reason") ?? "").trim();
+    if (reason.length < 5) return { error: "Add a short reason for the record." };
+    const ms = FREEZE_OPTIONS[duration];
+    await db.user.update({ where: { id: userId }, data: { status: "FROZEN", frozenUntil: ms ? new Date(Date.now() + ms) : null } });
+    await notify(userId, "Your account is paused from trading while our team looks into something. You can still finish deals already in progress and reply to support.", "/dashboard");
+    await audit(admin.id, `user:freeze:${duration}`, userId, reason);
+    revalidatePath(`/admin/users/${userId}`);
+    return await ok("Member frozen.");
+  } catch (e) {
+    return toActionState(e);
+  }
+}
+
+export async function resetVerification(_: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const admin = await staff("ADMIN");
+    const userId = String(formData.get("userId"));
+    const reason = String(formData.get("reason") ?? "").trim();
+    if (reason.length < 5) return { error: "Add a short reason for the record." };
+    const target = await db.user.findUnique({ where: { id: userId } });
+    if (!target) return { error: "Member not found." };
+    if (!target.aadhaarVerifiedAt) return { error: "This member isn't verified." };
+    await db.user.update({
+      where: { id: userId },
+      data: {
+        aadhaarVerifiedAt: null,
+        aadhaarName: null,
+        aadhaarLast4: null,
+        aadhaarHash: null,
+        guardianApprovedAt: null,
+        guardianEmail: null,
+        dobSource: "SELF",
+      },
+    });
+    await notify(userId, "Please verify your identity again with your own Aadhaar card before trading.", "/verify");
+    await audit(admin.id, "user:reset_verification", userId, reason);
+    revalidatePath(`/admin/users/${userId}`);
+    return await ok("Verification reset. They'll need to verify again before trading.");
+  } catch (e) {
+    return toActionState(e);
+  }
+}
+
+export async function addStaffNote(_: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const user = await staff();
+    const userId = String(formData.get("userId"));
+    const body = String(formData.get("body") ?? "").trim();
+    if (!body || body.length > 2000) return { error: "Notes must be 1–2000 characters." };
+    if (!(await db.user.findUnique({ where: { id: userId }, select: { id: true } }))) return { error: "Member not found." };
+    await db.staffNote.create({ data: { userId, authorId: user.id, body } });
+    revalidatePath(`/admin/users/${userId}`);
+    return await ok("Note saved.");
   } catch (e) {
     return toActionState(e);
   }

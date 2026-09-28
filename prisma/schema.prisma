@@ -86,6 +86,8 @@ model User {
   blocksMade        Block[]           @relation("Blocker")
   blocksReceived    Block[]           @relation("Blocked")
   auditLogs         AuditLog[]
+  staffNotesAbout   StaffNote[]       @relation("NoteSubject")
+  staffNotesWritten StaffNote[]       @relation("NoteAuthor")
 }
 
 model Account {
@@ -179,6 +181,7 @@ model Listing {
   hasBox  Boolean @default(false)
   hasTags Boolean @default(false)
   curated Boolean @default(false)
+  removedReason String? // set when staff remove the item
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -422,4 +425,17 @@ model AuditLog {
   target    String?
   details   String?  @db.Text
   createdAt DateTime @default(now())
+}
+
+// Private notes staff keep about a member (never shown to the member).
+model StaffNote {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("NoteSubject", fields: [userId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("NoteAuthor", fields: [authorId], references: [id])
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }

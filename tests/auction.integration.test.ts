@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { User } from "@prisma/client";
 import { db } from "@/lib/db";
 import { offerToNext, placeBid, settleListing } from "@/lib/auction";
+import { removeListingByStaff } from "@/lib/moderation";
+import { tradeBlock } from "@/lib/rules";
 
 const tag = `test-${Date.now()}`;
 const now = new Date();
@@ -92,6 +94,26 @@ describe("auction engine (database)", () => {
     const deal = await db.deal.findFirstOrThrow({ where: { listingId: l.id } });
     expect(deal).toMatchObject({ buyerId: bidders[2].id, amount: 500, rank: 2 });
     await db.user.update({ where: { id: bidders[3].id }, data: { status: "ACTIVE" } });
+  });
+
+  it("lets staff remove one item: bidders are told and no more bids are accepted", async () => {
+    const l = await makeListing();
+    await placeBid(l.id, bidders[0], 500);
+    const res = await removeListingByStaff(l.id, "Counterfeit — logo stitching doesn't match");
+    expect(res.ok).toBe(true);
+    const fresh = await db.listing.findUniqueOrThrow({ where: { id: l.id } });
+    expect(fresh).toMatchObject({ status: "CANCELLED", removedReason: "Counterfeit — logo stitching doesn't match" });
+    const told = await db.notification.count({ where: { userId: bidders[0].id, text: { contains: "removed by the Cloro team" } } });
+    expect(told).toBeGreaterThan(0);
+    const again = await placeBid(l.id, bidders[1], 600);
+    expect(again.ok).toBe(false);
+    expect((await removeListingByStaff(l.id, "again")).ok).toBe(false); // already removed
+  });
+
+  it("treats a reset verification as read-only", async () => {
+    const u = await db.user.update({ where: { id: bidders[1].id }, data: { aadhaarVerifiedAt: null } });
+    expect(tradeBlock(u)).toBe("NOT_VERIFIED");
+    await db.user.update({ where: { id: bidders[1].id }, data: { aadhaarVerifiedAt: new Date() } });
   });
 
   it("marks lots with no bids as unsold", async () => {

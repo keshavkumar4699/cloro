@@ -14,6 +14,7 @@ import { MemberCard } from "@/components/member-card";
 import { ActionForm } from "@/components/action-form";
 import { Avatar } from "@/components/avatar";
 import { answerQuestion, askQuestion, cancelListing, hideQuestion, relistListing, toggleCurated } from "@/app/actions/listings";
+import { removeListing } from "@/app/actions/support";
 import { openConversation } from "@/app/actions/chat";
 import { offerNextAction } from "@/app/actions/deals";
 
@@ -109,7 +110,10 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
           </div>
 
           {listing.status === "CANCELLED" ? (
-            <p className="notice">{sellerBanned ? "This item was removed from Cloro." : "The seller withdrew this item."}</p>
+            <p className="notice">
+              {listing.removedReason || sellerBanned ? "This item was removed by the Cloro team." : "The seller withdrew this item."}
+              {listing.removedReason && (isSeller || staff) && <span className="block mt-1 text-xs">Reason: {listing.removedReason}</span>}
+            </p>
           ) : (
             <BidPanel
               listingId={listing.id}
@@ -212,9 +216,22 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
           )}
 
           {staff && (
-            <ActionForm action={toggleCurated} submit={listing.curated ? "Remove from Curated" : "Add to Curated"} variant="ghost" size="sm">
-              <input type="hidden" name="listingId" value={listing.id} />
-            </ActionForm>
+            <div className="card !shadow-none p-4 space-y-3 border-dashed">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted">Staff tools</p>
+              <div className="flex flex-wrap gap-2">
+                <ActionForm action={toggleCurated} submit={listing.curated ? "Remove from Curated" : "Add to Curated"} variant="ghost" size="sm">
+                  <input type="hidden" name="listingId" value={listing.id} />
+                </ActionForm>
+                <Link href={`/admin/users/${listing.sellerId}`} className="btn btn-ghost btn-sm">Seller&apos;s member file</Link>
+              </div>
+              {listing.status !== "CANCELLED" && listing.status !== "SOLD" && (
+                <ActionForm action={removeListing} submit="Remove item" variant="danger" size="sm" className="flex flex-col sm:flex-row gap-2"
+                  confirm="Remove this item from Cloro? The seller and bidders will be told.">
+                  <input type="hidden" name="listingId" value={listing.id} />
+                  <input name="reason" className="input flex-1" placeholder="Reason shown to the seller, e.g. counterfeit" required minLength={5} />
+                </ActionForm>
+              )}
+            </div>
           )}
 
           {user && !isSeller && (
