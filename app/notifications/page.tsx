@@ -31,7 +31,7 @@ export default async function NotificationsPage() {
         )}
         {items.map((n) => (
           <li key={n.id}>
-            <Link href={`/notifications/${n.id}`} className={`flex gap-3 p-4 hover:bg-paper ${n.read ? "" : "bg-gold-soft/30"}`}>
+            <Link href={`/notifications/${n.id}`} prefetch={false} className={`flex gap-3 p-4 hover:bg-paper ${n.read ? "" : "bg-gold-soft/30"}`}>
               <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.read ? "bg-transparent" : "bg-gold"}`} aria-hidden />
               <span className="flex-1 text-sm leading-relaxed">
                 {n.text}

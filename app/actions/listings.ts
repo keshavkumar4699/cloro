@@ -14,6 +14,7 @@ import { placeBid } from "@/lib/auction";
 import { notify, audit } from "@/lib/notify";
 import { detectOffPlatform } from "@/lib/contact-filter";
 import { rateLimit } from "@/lib/rate-limit";
+import { isBlockedBetween } from "@/lib/chat";
 
 const MIN_PHOTOS = 2;
 const MAX_PHOTOS = 6;
@@ -59,7 +60,7 @@ export async function createListing(_: ActionState, formData: FormData): Promise
     const category = CATEGORIES.find((c) => c.id === data.category)!;
     for (const m of category.measurements) {
       const v = Number(formData.get(`m_${m}`));
-      if (v > 0) measurements[m] = v;
+      if (v > 0 && v < 1000) measurements[m] = Math.round(v * 10) / 10;
     }
     if (category.measurements.length && Object.keys(measurements).length === 0) {
       return { error: "Add at least one measurement so buyers know the exact fit." };
@@ -104,7 +105,10 @@ export async function createListing(_: ActionState, formData: FormData): Promise
         },
       });
       if (band === "ADULT_24_30" && !user.freeListingUsed) {
-        await tx.user.update({ where: { id: user.id }, data: { freeListingUsed: true } });
+        // Claim the one free listing atomically; if two tabs race, the second needs an active pass.
+        const { count } = await tx.user.updateMany({ where: { id: user.id, freeListingUsed: false }, data: { freeListingUsed: true } });
+        const passActive = !!user.listingPassUntil && user.listingPassUntil > new Date();
+        if (!count && !passActive) throw new ActionError("Your free listing was already used. Get a listing pass on the Membership page to list more.");
       }
       return l;
     });
@@ -122,6 +126,10 @@ export async function bidAction(_: ActionState, formData: FormData): Promise<Act
     const listingId = String(formData.get("listingId"));
     const amount = Number(formData.get("amount"));
     if (formData.get("promise") !== "on") return { error: "Please confirm that you'll buy the item if you win." };
+    await rateLimit("bid", user.id);
+    const listing = await db.listing.findUnique({ where: { id: listingId }, select: { sellerId: true } });
+    if (!listing) return { error: "Listing not found." };
+    if (await isBlockedBetween(listing.sellerId, user.id)) return { error: "You can't bid on this seller's items." };
     const res = await placeBid(listingId, user, amount);
     if (!res.ok) return { error: res.error };
     revalidatePath(`/listings/${listingId}`);

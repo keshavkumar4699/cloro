@@ -6,6 +6,8 @@ const LIMITS = {
   question: { max: 10, windowMs: 3_600_000, text: "You've asked a lot of questions this hour. Please try again later." },
   ticket: { max: 5, windowMs: 86_400_000, text: "You've opened several tickets today. Reply on an existing ticket and we'll help there." },
   listing: { max: 20, windowMs: 86_400_000, text: "You've listed a lot today. Please try again tomorrow." },
+  bid: { max: 20, windowMs: 60_000, text: "That's a lot of bids in a minute. Wait a moment and try again." },
+  aadhaar: { max: 8, windowMs: 86_400_000, text: "Too many verification attempts today. Please try again tomorrow or contact support." },
 } as const;
 
 /** Simple database-backed rate limits; no extra infrastructure to pay for. */
@@ -16,6 +18,8 @@ export async function rateLimit(kind: keyof typeof LIMITS, userId: string) {
     kind === "message" ? await db.message.count({ where: { senderId: userId, createdAt: { gte: since } } })
     : kind === "question" ? await db.question.count({ where: { askerId: userId, createdAt: { gte: since } } })
     : kind === "ticket" ? await db.ticket.count({ where: { userId, createdAt: { gte: since } } })
+    : kind === "bid" ? await db.bid.count({ where: { bidderId: userId, createdAt: { gte: since } } })
+    : kind === "aadhaar" ? await db.auditLog.count({ where: { actorId: userId, action: "aadhaar:attempt", createdAt: { gte: since } } })
     : await db.listing.count({ where: { sellerId: userId, createdAt: { gte: since } } });
   if (count >= max) throw new ActionError(text);
 }

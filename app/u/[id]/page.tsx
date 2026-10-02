@@ -8,11 +8,13 @@ import { formatDate } from "@/lib/format";
 import { MemberBadges } from "@/components/member-card";
 import { ListingGrid, cardSelect } from "@/components/listing-card";
 import { Avatar } from "@/components/avatar";
+import { watchedSet } from "@/lib/watch";
 
 export async function generateMetadata({ params }: PageProps<"/u/[id]">) {
   const { id } = await params;
   const u = await db.user.findUnique({ where: { id }, select: { name: true } });
-  return { title: u?.name ?? "Member" };
+  // Member profiles (some are minors) are kept out of search results.
+  return { title: u?.name ?? "Member", robots: { index: false, follow: false } };
 }
 
 export default async function ProfilePage({ params }: PageProps<"/u/[id]">) {
@@ -53,7 +55,7 @@ export default async function ProfilePage({ params }: PageProps<"/u/[id]">) {
       {listings.length > 0 && (
         <section className="mt-12">
           <h2 className="section-title">Live now</h2>
-          <div className="mt-5"><ListingGrid items={listings} /></div>
+          <div className="mt-5"><ListingGrid items={listings} watched={await watchedSet(viewer?.id, listings.map((l) => l.id))} /></div>
         </section>
       )}
 

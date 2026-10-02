@@ -1,6 +1,12 @@
 import Link from "next/link";
+import { JsonLd } from "@/components/json-ld";
+import { faqLd } from "@/lib/seo";
 
-export const metadata = { title: "Help centre" };
+export const metadata = {
+  title: "How Cloro works — online auctions, safety & selling help",
+  description: "How online auctions on Cloro work: bidding, winning, shipping, payments, Aadhaar verification, safety tips and community rules.",
+  alternates: { canonical: "/help" },
+};
 
 const FAQ: [string, string][] = [
   ["Who can join Cloro?", "Anyone aged 13 to 30. Cloro is built for Gen Z: members under 24 list for free; members aged 24–30 are welcome and pay a small monthly fee to list (their first listing is free). Members under 18 need a parent or guardian's approval to trade."],
@@ -18,6 +24,7 @@ const FAQ: [string, string][] = [
 export default function HelpPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 md:px-6 py-8 md:py-12">
+      <JsonLd data={faqLd(FAQ)} />
       <p className="eyebrow">Help centre</p>
       <h1 className="text-4xl md:text-5xl mt-2">How Cloro works</h1>
 

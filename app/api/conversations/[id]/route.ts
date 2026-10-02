@@ -12,9 +12,11 @@ export async function GET(req: Request, ctx: RouteContext<"/api/conversations/[i
   const access = await conversationAccess(id, userId);
   if (!access?.canRead) return Response.json({ error: "Not found" }, { status: 404 });
 
-  const after = new URL(req.url).searchParams.get("after");
+  const afterParam = new URL(req.url).searchParams.get("after");
+  const after = afterParam ? new Date(afterParam) : null;
+  if (after && Number.isNaN(after.getTime())) return Response.json({ error: "Bad 'after' date" }, { status: 400 });
   const messages = await db.message.findMany({
-    where: { conversationId: id, ...(after ? { createdAt: { gt: new Date(after) } } : {}) },
+    where: { conversationId: id, ...(after ? { createdAt: { gt: after } } : {}) },
     orderBy: { createdAt: "asc" },
     take: 200,
     select: { id: true, senderId: true, body: true, flagged: true, createdAt: true },

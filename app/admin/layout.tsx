@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/session";
 
+export const metadata = { robots: { index: false, follow: false } };
+
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const user = await requireStaff();
   return (

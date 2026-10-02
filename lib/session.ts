@@ -1,14 +1,19 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { User } from "@prisma/client";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { ageBand, ageOn, isEligibleBand, tradeBlock, TRADE_BLOCK_MESSAGES, type AgeBand } from "@/lib/rules";
 
-export async function getCurrentUser(): Promise<User | null> {
+/** The signed-in member, loaded once per request (layout, header and page share it). */
+export const getCurrentUser = cache(loadCurrentUser);
+
+async function loadCurrentUser(): Promise<User | null> {
   const session = await auth();
   const id = session?.user?.id;
   if (!id) return null;
   const user = await db.user.findUnique({ where: { id } });
+  if (!user || user.deletedAt) return null; // deleted accounts are signed out everywhere
   // Timed freezes lift themselves.
   if (user?.status === "FROZEN" && user.frozenUntil && user.frozenUntil <= new Date()) {
     return db.user.update({ where: { id }, data: { status: "ACTIVE", frozenUntil: null } });

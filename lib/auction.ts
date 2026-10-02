@@ -82,6 +82,9 @@ async function nextEligibleIndex(tx: Tx, ranked: { bidderId: string }[], from: n
 
 /** Closes one auction whose timer has run out. Safe to call repeatedly. */
 export async function settleListing(listingId: string, now = new Date()) {
+  // Cheap check first so ordinary page views don't open a locking transaction.
+  const due = await db.listing.count({ where: { id: listingId, status: "LIVE", endsAt: { lte: now } } });
+  if (!due) return;
   await db.$transaction(async (tx) => {
     await lockListing(tx, listingId);
     const listing = await tx.listing.findUnique({ where: { id: listingId } });
@@ -169,8 +172,18 @@ export async function offerToNext(listingId: string, sellerId: string): Promise<
   });
 }
 
-/** Closes ended auctions and expires unanswered offers. Called lazily on page loads and by the cron route. */
-export async function settleDue(now = new Date()) {
+let lastLazyRun = 0;
+const LAZY_INTERVAL_MS = 20_000;
+
+/**
+ * Closes ended auctions and expires unanswered offers.
+ * Page loads call it lazily (at most every 20s per server); the cron route calls it with `force`.
+ */
+export async function settleDue(now = new Date(), opts: { force?: boolean } = {}) {
+  if (!opts.force) {
+    if (now.getTime() - lastLazyRun < LAZY_INTERVAL_MS) return;
+    lastLazyRun = now.getTime();
+  }
   const due = await db.listing.findMany({
     where: { status: "LIVE", endsAt: { lte: now } },
     select: { id: true },
@@ -189,4 +202,39 @@ export async function settleDue(now = new Date()) {
     await notify(d.sellerId, `The offer for “${d.listing.title}” expired without a reply. You can offer it to the next bidder.`, `/deals/${d.id}`);
     await notify(d.buyerId, `Your offer for “${d.listing.title}” expired.`, `/deals/${d.id}`);
   }
+}
+
+const AUTO_COMPLETE_DAYS = 7;
+const NOTIFICATION_RETENTION_DAYS = 60;
+
+/**
+ * Housekeeping run by the cron:
+ * - a deal one side confirmed but the other ignored for 7 days is completed (both are told and can open a ticket);
+ * - read alerts older than 60 days are deleted to keep the database small.
+ */
+export async function runMaintenance(now = new Date()) {
+  const cutoff = new Date(now.getTime() - AUTO_COMPLETE_DAYS * 86400000);
+  const stale = await db.deal.findMany({
+    where: {
+      status: "ACCEPTED",
+      OR: [
+        { buyerDoneAt: { lte: cutoff }, sellerDoneAt: null },
+        { sellerDoneAt: { lte: cutoff }, buyerDoneAt: null },
+      ],
+    },
+    include: { listing: { select: { title: true } } },
+    take: 100,
+  });
+  for (const d of stale) {
+    const { count } = await db.deal.updateMany({ where: { id: d.id, status: "ACCEPTED" }, data: { status: "COMPLETED" } });
+    if (!count) continue;
+    await db.listing.update({ where: { id: d.listingId }, data: { status: "SOLD" } });
+    const text = `“${d.listing.title}” was marked done automatically after ${AUTO_COMPLETE_DAYS} days. If something went wrong, open a support ticket from the deal page.`;
+    await notify(d.buyerId, text, `/deals/${d.id}`);
+    await notify(d.sellerId, text, `/deals/${d.id}`);
+  }
+  const { count: purged } = await db.notification.deleteMany({
+    where: { read: true, createdAt: { lt: new Date(now.getTime() - NOTIFICATION_RETENTION_DAYS * 86400000) } },
+  });
+  return { autoCompleted: stale.length, purgedNotifications: purged };
 }

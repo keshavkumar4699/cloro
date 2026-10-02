@@ -6,6 +6,12 @@ import { db } from "@/lib/db";
 
 export const devLoginEnabled = process.env.NODE_ENV !== "production" && process.env.DEV_LOGIN === "true";
 
+/**
+ * Reading the Google birthday is a "sensitive" scope: until Google reviews the app, only 100 people can ever sign in.
+ * It is off by default; members type their date of birth once instead (Aadhaar decides the real age later).
+ */
+const askGoogleBirthday = process.env.GOOGLE_BIRTHDAY_SCOPE === "true";
+
 /** Reads the birthday from the Google account, if the user shared one with a year. */
 async function fetchGoogleBirthday(accessToken: string): Promise<Date | null> {
   try {
@@ -21,15 +27,25 @@ async function fetchGoogleBirthday(accessToken: string): Promise<Date | null> {
   }
 }
 
+// Data minimisation: we only need Google to prove who someone is, so OAuth tokens are never stored.
+const baseAdapter = PrismaAdapter(db);
+const adapter: typeof baseAdapter = {
+  ...baseAdapter,
+  linkAccount: (account) =>
+    baseAdapter.linkAccount!({ ...account, access_token: undefined, refresh_token: undefined, id_token: undefined, expires_at: undefined }),
+};
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(db),
+  adapter,
+  // Self-hosted (Docker / any host): Auth.js only trusts the incoming Host header when told to.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/signin" },
   providers: [
     Google({
       authorization: {
         params: {
-          scope: "openid email profile https://www.googleapis.com/auth/user.birthday.read",
+          scope: askGoogleBirthday ? "openid email profile https://www.googleapis.com/auth/user.birthday.read" : "openid email profile",
           prompt: "select_account",
         },
       },
@@ -62,7 +78,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   events: {
     async signIn({ user, account }) {
-      if (account?.provider !== "google" || !account.access_token || !user.id) return;
+      if (!askGoogleBirthday || account?.provider !== "google" || !account.access_token || !user.id) return;
       const existing = await db.user.findUnique({ where: { id: user.id }, select: { dob: true } });
       if (existing?.dob) return;
       const dob = await fetchGoogleBirthday(account.access_token);

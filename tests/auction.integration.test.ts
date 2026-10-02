@@ -2,7 +2,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { User } from "@prisma/client";
 import { db } from "@/lib/db";
-import { offerToNext, placeBid, settleListing } from "@/lib/auction";
+import { offerToNext, placeBid, runMaintenance, settleListing } from "@/lib/auction";
+import { remindWatchers } from "@/lib/watch";
+import { completePassPayment } from "@/lib/payments";
 import { removeListingByStaff } from "@/lib/moderation";
 import { tradeBlock } from "@/lib/rules";
 
@@ -33,6 +35,8 @@ beforeAll(async () => {
 afterAll(async () => {
   const ids = [seller, ...bidders].map((u) => u.id);
   const listings = await db.listing.findMany({ where: { sellerId: seller.id }, select: { id: true } });
+  await db.watch.deleteMany({ where: { userId: { in: ids } } });
+  await db.payment.deleteMany({ where: { userId: { in: ids } } });
   await db.deal.deleteMany({ where: { listingId: { in: listings.map((l) => l.id) } } });
   await db.listing.deleteMany({ where: { sellerId: seller.id } });
   await db.notification.deleteMany({ where: { userId: { in: ids } } });
@@ -114,6 +118,36 @@ describe("auction engine (database)", () => {
     const u = await db.user.update({ where: { id: bidders[1].id }, data: { aadhaarVerifiedAt: null } });
     expect(tradeBlock(u)).toBe("NOT_VERIFIED");
     await db.user.update({ where: { id: bidders[1].id }, data: { aadhaarVerifiedAt: new Date() } });
+  });
+
+  it("auto-completes a deal one side confirmed a week ago and the other ignored", async () => {
+    const l = await makeListing();
+    const deal = await db.deal.create({
+      data: { listingId: l.id, buyerId: bidders[0].id, sellerId: seller.id, amount: 500, rank: 1, status: "ACCEPTED", respondBy: new Date(), buyerDoneAt: new Date(Date.now() - 8 * 86400000) },
+    });
+    await runMaintenance();
+    expect((await db.deal.findUniqueOrThrow({ where: { id: deal.id } })).status).toBe("COMPLETED");
+    expect((await db.listing.findUniqueOrThrow({ where: { id: l.id } })).status).toBe("SOLD");
+  });
+
+  it("sends one 'ending soon' reminder per saved item", async () => {
+    const l = await makeListing({ endsAt: new Date(Date.now() + 30 * 60_000) });
+    await db.watch.create({ data: { userId: bidders[1].id, listingId: l.id } });
+    expect(await remindWatchers()).toBeGreaterThanOrEqual(1);
+    const count = () => db.notification.count({ where: { userId: bidders[1].id, link: `/listings/${l.id}`, text: { contains: "ends within the hour" } } });
+    expect(await count()).toBe(1);
+    await remindWatchers();
+    expect(await count()).toBe(1); // not repeated
+  });
+
+  it("extends a listing pass only once when the checkout callback and webhook arrive together", async () => {
+    const orderId = `test_order_${tag}`;
+    await db.payment.create({ data: { userId: bidders[2].id, amount: 299, provider: "razorpay", providerOrderId: orderId } });
+    await Promise.all([completePassPayment(orderId, "pay_1", bidders[2].id), completePassPayment(orderId, "pay_1", bidders[2].id)]);
+    const u = await db.user.findUniqueOrThrow({ where: { id: bidders[2].id } });
+    const days = (u.listingPassUntil!.getTime() - Date.now()) / 86400000;
+    expect(days).toBeGreaterThan(29);
+    expect(days).toBeLessThan(31);
   });
 
   it("marks lots with no bids as unsold", async () => {

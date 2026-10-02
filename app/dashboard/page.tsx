@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, Gavel, Package, Plus, Store } from "lucide-react";
+import { ArrowRight, BadgeCheck, Gavel, Heart, Package, Plus, Store } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireMember, bandOf } from "@/lib/session";
 import { settleDue } from "@/lib/auction";
@@ -8,6 +8,7 @@ import { listingFeeRequired, rankBidders, tradeBlock, TRADE_BLOCK_MESSAGES } fro
 import { ActionForm } from "@/components/action-form";
 import { Avatar } from "@/components/avatar";
 import { appealStrike } from "@/app/actions/support";
+import { deleteMyAccount } from "@/app/actions/account";
 
 export const metadata = { title: "My Cloro" };
 
@@ -44,7 +45,7 @@ export default async function DashboardPage() {
   const band = bandOf(user);
   const block = tradeBlock(user);
 
-  const [deals, listings, myBids, strikes] = await Promise.all([
+  const [deals, listings, myBids, strikes, saved] = await Promise.all([
     db.deal.findMany({
       where: { OR: [{ buyerId: user.id }, { sellerId: user.id }] },
       include: { listing: { select: { title: true, images: { take: 1, orderBy: { position: "asc" } } } } },
@@ -54,6 +55,12 @@ export default async function DashboardPage() {
     db.listing.findMany({ where: { sellerId: user.id }, orderBy: { createdAt: "desc" }, take: 30, include: { images: { take: 1, orderBy: { position: "asc" } } } }),
     db.bid.findMany({ where: { bidderId: user.id }, distinct: ["listingId"], select: { listingId: true }, orderBy: { createdAt: "desc" }, take: 30 }),
     db.strike.findMany({ where: { userId: user.id, status: { in: ["CONFIRMED", "OVERTURNED"] } }, orderBy: { createdAt: "desc" } }),
+    db.watch.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      include: { listing: { include: { images: { take: 1, orderBy: { position: "asc" } } } } },
+    }),
   ]);
   const bidListings = await db.listing.findMany({
     where: { id: { in: myBids.map((b) => b.listingId) } },
@@ -127,6 +134,20 @@ export default async function DashboardPage() {
         })}
       </Section>
 
+      <Section title="Saved" icon={Heart}>
+        {saved.length === 0 && <Empty>Tap the ♥ on any item to save it. We&apos;ll remind you an hour before it ends.</Empty>}
+        {saved.map(({ listing: l }) => (
+          <Link key={l.id} href={`/listings/${l.id}`} className="flex items-center gap-3 p-3 hover:bg-paper">
+            {thumb(l.images[0]?.url)}
+            <div className="flex-1 min-w-0">
+              <p className="font-medium truncate">{l.title}</p>
+              <p className="text-xs text-muted">{formatINR(l.currentPrice)} · {l.bidCount} bid{l.bidCount === 1 ? "" : "s"}</p>
+            </div>
+            <span className={`badge ${l.status === "LIVE" ? "badge-brand" : ""}`}>{LISTING_LABEL[l.status]}</span>
+          </Link>
+        ))}
+      </Section>
+
       <Section title="Your bids" icon={Gavel}>
         {bidListings.length === 0 && <Empty>You haven&apos;t bid on anything yet. <Link href="/browse" className="link">Find something you love</Link>.</Empty>}
         {bidListings.map((l) => {
@@ -189,6 +210,19 @@ export default async function DashboardPage() {
           </ul>
         </section>
       )}
+
+      <details className="card !shadow-none p-5 text-sm">
+        <summary className="cursor-pointer font-semibold">Privacy &amp; account</summary>
+        <p className="mt-3 text-muted leading-relaxed">
+          Read how we use your data in our <Link href="/legal/privacy" className="link">privacy policy</Link>. You can delete your account at
+          any time: we erase your name, email, photo, date of birth, city and Aadhaar details, and sign you out. Ratings and messages you
+          left for others stay, shown as &ldquo;Deleted member&rdquo;.
+        </p>
+        <ActionForm action={deleteMyAccount} submit="Delete my account" variant="danger" size="sm" className="mt-4 flex flex-col sm:flex-row gap-2"
+          confirm="Delete your Cloro account permanently? This can't be undone.">
+          <input name="confirm" className="input sm:max-w-56" placeholder="Type DELETE to confirm" required aria-label="Type DELETE to confirm" />
+        </ActionForm>
+      </details>
     </div>
   );
 }

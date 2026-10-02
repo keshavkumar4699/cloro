@@ -1,4 +1,9 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbLd } from "@/lib/seo";
+import { absoluteUrl } from "@/lib/site";
+import { slugForCategory } from "@/lib/category-seo";
 import { notFound } from "next/navigation";
 import { ChevronRight, Flag, MapPin, MessageCircle, Package, Ruler, Sparkles, Truck, Users } from "lucide-react";
 import { db } from "@/lib/db";
@@ -13,6 +18,7 @@ import { Gallery } from "@/components/gallery";
 import { MemberCard } from "@/components/member-card";
 import { ActionForm } from "@/components/action-form";
 import { Avatar } from "@/components/avatar";
+import { WatchButton } from "@/components/watch-button";
 import { answerQuestion, askQuestion, cancelListing, hideQuestion, relistListing, toggleCurated } from "@/app/actions/listings";
 import { removeListing } from "@/app/actions/support";
 import { openConversation } from "@/app/actions/chat";
@@ -20,10 +26,24 @@ import { offerNextAction } from "@/app/actions/deals";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: PageProps<"/listings/[id]">) {
+export async function generateMetadata({ params }: PageProps<"/listings/[id]">): Promise<Metadata> {
   const { id } = await params;
-  const l = await db.listing.findUnique({ where: { id }, select: { title: true } });
-  return { title: l?.title ?? "Item" };
+  const l = await db.listing.findUnique({
+    where: { id },
+    select: { title: true, description: true, brand: true, size: true, currentPrice: true, status: true, city: true, category: true, images: { take: 1, orderBy: { position: "asc" }, select: { url: true } } },
+  });
+  if (!l) return { title: "Item not found", robots: { index: false } };
+  const verb = l.status === "LIVE" ? `Bid from ${formatINR(l.currentPrice)}` : l.status === "SOLD" ? `Sold for ${formatINR(l.currentPrice)}` : "Auction ended";
+  const title = `${l.title}${l.brand ? ` by ${l.brand}` : ""} — Size ${l.size} · ${verb}`;
+  const description = `${l.description.replace(/\s+/g, " ").slice(0, 120)}… ${categoryLabel(l.category)} in ${l.city}. Online auction on Cloro.`;
+  return {
+    title,
+    description,
+    alternates: { canonical: `/listings/${id}` },
+    robots: l.status === "CANCELLED" ? { index: false, follow: true } : undefined,
+    openGraph: { title, description, url: `/listings/${id}`, type: "website", images: l.images[0] ? [{ url: l.images[0].url, alt: l.title }] : undefined },
+    twitter: { card: "summary_large_image", title, description, images: l.images[0] ? [l.images[0].url] : undefined },
+  };
 }
 
 export default async function ListingPage({ params }: PageProps<"/listings/[id]">) {
@@ -39,7 +59,13 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
   });
   if (!listing) notFound();
 
-  const [user, ranked, sellerRep] = await Promise.all([getCurrentUser(), rankedBidders(id), getReputation(listing.sellerId)]);
+  const [user, ranked, sellerRep, watchers] = await Promise.all([
+    getCurrentUser(),
+    rankedBidders(id),
+    getReputation(listing.sellerId),
+    db.watch.count({ where: { listingId: id } }),
+  ]);
+  const watching = user ? !!(await db.watch.findUnique({ where: { userId_listingId: { userId: user.id, listingId: id } } })) : false;
   const isSeller = user?.id === listing.sellerId;
   const top3 = ranked.slice(0, 3);
   const inTop3 = !!user && top3.some((b) => b.bidderId === user.id);
@@ -80,12 +106,47 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
     [Truck, "Shipping", `~${formatINR(listing.shippingEstimate)}, paid by buyer`],
   ];
 
+  const productLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: listing.title,
+    description: listing.description.slice(0, 500),
+    sku: listing.id,
+    category: categoryLabel(listing.category),
+    image: listing.images.map((i) => (i.url.startsWith("http") ? i.url : absoluteUrl(i.url))),
+    ...(listing.brand ? { brand: { "@type": "Brand", name: listing.brand } } : {}),
+    size: `${listing.size} (${listing.sizeSystem})`,
+    offers: {
+      "@type": "Offer",
+      url: absoluteUrl(`/listings/${listing.id}`),
+      priceCurrency: "INR",
+      price: listing.currentPrice,
+      priceValidUntil: listing.endsAt.toISOString().slice(0, 10),
+      availability: listing.status === "LIVE" ? "https://schema.org/InStock" : "https://schema.org/SoldOut",
+      itemCondition: listing.condition === "NEW_WITH_TAGS" ? "https://schema.org/NewCondition" : "https://schema.org/UsedCondition",
+      areaServed: "IN",
+    },
+  };
+  const catSlug = slugForCategory(listing.category);
+
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-6 md:py-10">
+      {listing.status !== "CANCELLED" && (
+        <JsonLd
+          data={[
+            productLd,
+            breadcrumbLd([
+              { name: "Home", path: "/" },
+              { name: categoryLabel(listing.category), path: `/c/${catSlug}` },
+              { name: listing.title, path: `/listings/${listing.id}` },
+            ]),
+          ]}
+        />
+      )}
       <nav className="flex items-center gap-1 text-sm text-muted" aria-label="Breadcrumb">
         <Link href="/browse" className="hover:text-ink">Explore</Link>
         <ChevronRight className="w-3.5 h-3.5" aria-hidden />
-        <Link href={`/browse?category=${listing.category}`} className="hover:text-ink">{categoryLabel(listing.category)}</Link>
+        <Link href={`/c/${catSlug}`} className="hover:text-ink">{categoryLabel(listing.category)}</Link>
       </nav>
 
       <div className="mt-4 grid lg:grid-cols-[1.15fr_1fr] gap-8 lg:gap-12">
@@ -99,7 +160,11 @@ export default async function ListingPage({ params }: PageProps<"/listings/[id]"
               {listing.brand && <span className="eyebrow">{listing.brand}</span>}
               {listing.curated && <span className="badge badge-gold"><Sparkles className="w-3 h-3" aria-hidden /> Cloro Curated</span>}
             </div>
-            <h1 className="text-3xl md:text-[2.6rem] leading-tight mt-2">{listing.title}</h1>
+            <div className="flex items-start gap-3 mt-2">
+              <h1 className="text-3xl md:text-[2.6rem] leading-tight flex-1">{listing.title}</h1>
+              <WatchButton listingId={listing.id} initial={watching} size="lg" />
+            </div>
+            {watchers > 1 && <p className="mt-1 text-sm text-muted">❤️ {watchers} people saved this</p>}
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="badge badge-brand">Size {listing.size}</span>
               <span className="badge">{conditionLabel(listing.condition)}</span>

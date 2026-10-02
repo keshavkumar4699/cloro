@@ -11,6 +11,8 @@ import { toActionState, type ActionState } from "@/lib/action-state";
 import { identityFingerprint, loadUidaiPublicKey, namesMatch, parseSecureQr } from "@/lib/aadhaar";
 import { ageBand, ageOn, isEligibleBand } from "@/lib/rules";
 import { notify, audit } from "@/lib/notify";
+import { signOut } from "@/auth";
+import { rateLimit } from "@/lib/rate-limit";
 
 async function signedIn() {
   const user = await getCurrentUser();
@@ -66,6 +68,9 @@ export async function verifyAadhaar(_: ActionState, formData: FormData): Promise
     if (user.aadhaarVerifiedAt) return await ok("You're already verified.");
     const qr = String(formData.get("qr") ?? "");
     if (!qr) return { error: "Scan or upload your Aadhaar card first." };
+    if (qr.length > 20000) return { error: "This doesn't look like an Aadhaar Secure QR code." };
+    await rateLimit("aadhaar", user.id);
+    await audit(user.id, "aadhaar:attempt");
 
     const key = loadUidaiPublicKey(process.env.UIDAI_PUBLIC_KEY_PEM);
     if (!key && process.env.AADHAAR_ALLOW_UNSIGNED !== "true") {
@@ -184,4 +189,57 @@ export async function toggleBlock(_: ActionState, formData: FormData): Promise<A
   } catch (e) {
     return toActionState(e);
   }
+}
+
+/**
+ * Right to erasure (DPDP Act): removes the member's personal data and signs them out.
+ * Blocked while they have open deals or live auctions with bids, so nobody is left mid-trade.
+ * The Aadhaar fingerprint is kept only if they have confirmed strikes, so a ban can't be dodged by deleting.
+ */
+export async function deleteMyAccount(_: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    const user = await signedIn();
+    if (String(formData.get("confirm") ?? "").trim().toUpperCase() !== "DELETE") return { error: "Type DELETE to confirm." };
+    if (user.role === "ADMIN" && (await db.user.count({ where: { role: "ADMIN", deletedAt: null } })) <= 1) {
+      return { error: "You're the only admin. Make someone else an admin first." };
+    }
+    const openDeals = await db.deal.count({ where: { status: { in: ["OFFERED", "ACCEPTED"] }, OR: [{ buyerId: user.id }, { sellerId: user.id }] } });
+    if (openDeals) return { error: "Finish or cancel your open deals first, then you can delete your account." };
+    const liveWithBids = await db.listing.count({ where: { sellerId: user.id, status: "LIVE", bidCount: { gt: 0 } } });
+    if (liveWithBids) return { error: "You have live auctions with bids. You can delete your account once they end." };
+    const strikes = await db.strike.count({ where: { userId: user.id, status: "CONFIRMED" } });
+
+    await db.$transaction([
+      db.listing.updateMany({ where: { sellerId: user.id, status: "LIVE" }, data: { status: "CANCELLED" } }),
+      db.watch.deleteMany({ where: { userId: user.id } }),
+      db.notification.deleteMany({ where: { userId: user.id } }),
+      db.block.deleteMany({ where: { blockerId: user.id } }),
+      db.guardianRequest.deleteMany({ where: { minorId: user.id, status: "PENDING" } }),
+      db.account.deleteMany({ where: { userId: user.id } }),
+      db.session.deleteMany({ where: { userId: user.id } }),
+      db.user.update({
+        where: { id: user.id },
+        data: {
+          deletedAt: new Date(),
+          name: "Deleted member",
+          email: null,
+          emailVerified: null,
+          image: null,
+          dob: null,
+          city: null,
+          pincode: null,
+          aadhaarName: null,
+          aadhaarLast4: null,
+          aadhaarHash: strikes ? user.aadhaarHash : null,
+          guardianEmail: null,
+          role: "USER",
+        },
+      }),
+    ]);
+    await audit(user.id, "account:delete");
+  } catch (e) {
+    return toActionState(e);
+  }
+  await signOut({ redirectTo: "/?deleted=1" });
+  return undefined;
 }

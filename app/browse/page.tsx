@@ -1,12 +1,25 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import type { Prisma } from "@prisma/client";
 import { ChevronLeft, ChevronRight, Search, SlidersHorizontal } from "lucide-react";
 import { db } from "@/lib/db";
 import { settleDue } from "@/lib/auction";
 import { CATEGORIES, CONDITIONS, categoryLabel } from "@/lib/catalog";
 import { ListingGrid, cardSelect } from "@/components/listing-card";
+import { getCurrentUser } from "@/lib/session";
+import { watchedSet } from "@/lib/watch";
 
-export const metadata = { title: "Explore" };
+export async function generateMetadata({ searchParams }: PageProps<"/browse">): Promise<Metadata> {
+  const sp = await searchParams;
+  const filtered = Object.values(sp).some((v) => typeof v === "string" && v !== "");
+  return {
+    title: "Explore live auctions — bid on pre-loved fashion, sneakers & gadgets",
+    description: "Browse live online auctions across India. Bid on pre-loved clothes, sneakers, bags, watches and gadgets from verified sellers, with real sizes and measurements.",
+    alternates: { canonical: "/browse" },
+    // Filtered and searched views are near-duplicates; keep them out of the index but let crawlers follow the items.
+    robots: filtered ? { index: false, follow: true } : undefined,
+  };
+}
 export const dynamic = "force-dynamic";
 
 const PAGE = 24;
@@ -57,6 +70,9 @@ export default async function BrowsePage({ searchParams }: PageProps<"/browse">)
     db.listing.findMany({ where, orderBy, skip: (page - 1) * PAGE, take: PAGE, select: cardSelect }),
     db.listing.count({ where }),
   ]);
+
+  const user = await getCurrentUser();
+  const watched = await watchedSet(user?.id, items.map((i) => i.id));
 
   const href = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -148,7 +164,7 @@ export default async function BrowsePage({ searchParams }: PageProps<"/browse">)
 
       {items.length ? (
         <div className="mt-6">
-          <ListingGrid items={items} />
+          <ListingGrid items={items} watched={watched} />
         </div>
       ) : (
         <div className="mt-16 text-center">

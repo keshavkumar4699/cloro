@@ -58,6 +58,8 @@ model User {
   freeListingUsed  Boolean   @default(false)
   listingPassUntil DateTime?
 
+  deletedAt DateTime? // set when the member deletes their account (personal data is erased)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -87,6 +89,7 @@ model User {
   blocksReceived    Block[]           @relation("Blocked")
   auditLogs         AuditLog[]
   staffNotesAbout   StaffNote[]       @relation("NoteSubject")
+  watches           Watch[]
   staffNotesWritten StaffNote[]       @relation("NoteAuthor")
 }
 
@@ -192,10 +195,14 @@ model Listing {
   conversations Conversation[]
   deals         Deal[]
   tickets       Ticket[]
+  watchers      Watch[]
 
   @@index([status, endsAt])
-  @@index([category])
-  @@index([sellerId])
+  @@index([status, createdAt])
+  @@index([status, currentPrice])
+  @@index([status, curated])
+  @@index([category, status])
+  @@index([sellerId, createdAt])
 }
 
 model ListingImage {
@@ -204,6 +211,7 @@ model ListingImage {
   listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
   url       String
   position  Int
+  @@index([listingId, position])
 }
 
 model Bid {
@@ -216,6 +224,7 @@ model Bid {
   createdAt DateTime @default(now())
 
   @@index([listingId, amount])
+  @@index([bidderId, createdAt])
 }
 
 model Question {
@@ -229,6 +238,8 @@ model Question {
   answeredAt DateTime?
   hidden     Boolean   @default(false)
   createdAt  DateTime  @default(now())
+  @@index([listingId, createdAt])
+  @@index([askerId, createdAt])
 }
 
 // Private chat between a listing's seller and one bidder.
@@ -242,6 +253,7 @@ model Conversation {
   messages  Message[]
 
   @@unique([listingId, bidderId])
+  @@index([bidderId])
 }
 
 model Message {
@@ -255,6 +267,7 @@ model Message {
   createdAt      DateTime     @default(now())
 
   @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
 }
 
 enum DealStatus {
@@ -290,6 +303,9 @@ model Deal {
   tickets Ticket[]
 
   @@index([listingId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status, respondBy])
 }
 
 model Review {
@@ -305,6 +321,7 @@ model Review {
   createdAt  DateTime @default(now())
 
   @@unique([dealId, reviewerId])
+  @@index([revieweeId])
 }
 
 enum TicketStatus {
@@ -341,6 +358,8 @@ model Ticket {
   strikes  Strike[]
 
   @@index([status, priority])
+  @@index([userId, createdAt])
+  @@index([againstId])
 }
 
 model TicketMessage {
@@ -380,6 +399,7 @@ model Strike {
   createdAt     DateTime     @default(now())
   confirmedAt   DateTime?
   expiresAt     DateTime?
+  @@index([userId, status])
 }
 
 model Notification {
@@ -392,6 +412,7 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId, read])
+  @@index([userId, createdAt])
 }
 
 model Payment {
@@ -405,6 +426,7 @@ model Payment {
   status          String   @default("CREATED") // CREATED | PAID | FAILED
   createdAt       DateTime @default(now())
   paidAt          DateTime?
+  @@index([userId])
 }
 
 model Block {
@@ -425,6 +447,8 @@ model AuditLog {
   target    String?
   details   String?  @db.Text
   createdAt DateTime @default(now())
+  @@index([actorId, action, createdAt])
+  @@index([createdAt])
 }
 
 // Private notes staff keep about a member (never shown to the member).
@@ -438,4 +462,17 @@ model StaffNote {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+// A member saving ("hearting") an item to follow it.
+model Watch {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  remindedAt DateTime? // "ending soon" alert sent
+  createdAt DateTime @default(now())
+
+  @@id([userId, listingId])
+  @@index([listingId])
 }

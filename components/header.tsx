@@ -17,8 +17,8 @@ export async function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-line/70 bg-paper/85 backdrop-blur-md">
       <div className="mx-auto max-w-6xl px-4 md:px-6 h-16 flex items-center gap-4 md:gap-8">
-        <Link href="/" className="serif text-[1.75rem] leading-none tracking-tight" aria-label="Cloro home">
-          cloro<span className="text-gold">.</span>
+        <Link href="/" className="group/logo serif text-[1.75rem] leading-none tracking-tight" aria-label="Cloro home">
+          cloro<span className="text-gold inline-block transition-transform duration-300 group-hover/logo:scale-150 group-hover/logo:-translate-y-1">.</span>
         </Link>
 
         <form action="/browse" className="hidden md:flex flex-1 max-w-md relative">
@@ -28,6 +28,7 @@ export async function Header() {
 
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-ink-soft">
           <Link href="/browse" className="hover:text-ink">Explore</Link>
+          {!user && <Link href="/sell" className="hover:text-ink">Sell</Link>}
           <Link href="/help" className="hover:text-ink">How it works</Link>
           {isStaff(user) && (
             <Link href="/admin" className="inline-flex items-center gap-1 text-brand hover:text-brand-dark">

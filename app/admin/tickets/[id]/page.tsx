@@ -11,6 +11,7 @@ import { TicketThread } from "@/components/ticket-thread";
 import { ActionForm } from "@/components/action-form";
 import { MemberCard } from "@/components/member-card";
 import { proposeStrike, replyTicket, updateTicket } from "@/app/actions/support";
+import { ImageInput } from "@/components/image-input";
 
 export const metadata = { title: "Ticket" };
 
@@ -62,7 +63,7 @@ export default async function AdminTicketPage({ params }: PageProps<"/admin/tick
           <textarea name="body" rows={4} className="input" required placeholder="Reply to the member(s), or write an internal note." />
           <div className="flex items-center gap-6 text-sm">
             <label className="flex items-center gap-2"><input type="checkbox" name="internal" /> Internal note (staff only)</label>
-            <input name="attachments" type="file" accept="image/jpeg,image/png,image/webp" multiple className="block w-full text-sm text-muted file:mr-3 file:rounded-full file:border file:border-line file:bg-white file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:border-ink" />
+            <ImageInput name="attachments" />
           </div>
         </ActionForm>
 

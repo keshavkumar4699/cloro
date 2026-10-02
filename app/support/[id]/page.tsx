@@ -6,6 +6,7 @@ import { ticketCategoryLabel } from "@/lib/catalog";
 import { TicketThread } from "@/components/ticket-thread";
 import { ActionForm } from "@/components/action-form";
 import { replyTicket } from "@/app/actions/support";
+import { ImageInput } from "@/components/image-input";
 
 export const metadata = { title: "Support ticket" };
 
@@ -44,7 +45,7 @@ export default async function TicketPage({ params }: PageProps<"/support/[id]">)
         <ActionForm action={replyTicket} submit="Reply" className="mt-8 space-y-3">
           <input type="hidden" name="ticketId" value={ticket.id} />
           <textarea name="body" rows={4} className="input" required />
-          <input name="attachments" type="file" accept="image/jpeg,image/png,image/webp" multiple className="block w-full text-sm text-muted file:mr-3 file:rounded-full file:border file:border-line file:bg-white file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:border-ink" />
+          <ImageInput name="attachments" />
         </ActionForm>
       )}
     </div>

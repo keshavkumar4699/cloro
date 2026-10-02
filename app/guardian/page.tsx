@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Users } from "lucide-react";
 import { db } from "@/lib/db";
@@ -8,6 +7,7 @@ import { createGuardianRequest } from "@/app/actions/account";
 import { ActionForm } from "@/components/action-form";
 import { CopyLink } from "@/components/copy-link";
 import { formatDate } from "@/lib/format";
+import { absoluteUrl } from "@/lib/site";
 
 export const metadata = { title: "Guardian approval" };
 
@@ -32,8 +32,6 @@ export default async function GuardianPage() {
   const req = await db.guardianRequest.findFirst({ where: { minorId: user.id, status: "PENDING" }, orderBy: { createdAt: "desc" } });
   const expiresAt = req ? new Date(req.createdAt.getTime() + LINK_DAYS * 86400000) : null;
   const valid = req && expiresAt! > new Date();
-  const h = await headers();
-  const origin = process.env.AUTH_URL ?? `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
 
   return (
     <div className="mx-auto max-w-xl px-4 md:px-6 py-10 md:py-14 fade-in">
@@ -46,7 +44,7 @@ export default async function GuardianPage() {
       <div className="mt-8">
         {valid ? (
           <>
-            <CopyLink url={`${origin}/guardian/${req.token}`} />
+            <CopyLink url={absoluteUrl(`/guardian/${req.token}`)} />
             <p className="hint">This link works until {formatDate(expiresAt!)}.</p>
           </>
         ) : (

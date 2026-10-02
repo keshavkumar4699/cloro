@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useState } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
+import { confetti } from "@/lib/confetti";
 import { useRouter } from "next/navigation";
 import { Clock, Gavel, Loader2 } from "lucide-react";
 import { bidAction } from "@/app/actions/listings";
@@ -38,12 +39,18 @@ export function BidPanel({
 }) {
   const router = useRouter();
   const [polled, setPolled] = useState<LiveState | null>(null);
+  const bidButton = useRef<HTMLButtonElement>(null);
+  const [firstPrice] = useState(initial.currentPrice);
   // Server-rendered props refresh after our own bid; polling picks up everyone else's.
   const live = polled && polled.bidCount >= initial.bidCount ? polled : initial;
   const [amount, setAmount] = useState<string>("");
   const [state, action, pending] = useActionState(async (prev: Parameters<typeof bidAction>[0], fd: FormData) => {
     const result = await bidAction(prev, fd);
-    if (!result?.error) setAmount("");
+    if (!result?.error) {
+      setAmount("");
+      const r = bidButton.current?.getBoundingClientRect();
+      confetti(r ? { x: r.left + r.width / 2, y: r.top } : undefined);
+    }
     return result;
   }, undefined);
 
@@ -84,7 +91,9 @@ export function BidPanel({
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm text-muted">{live.bidCount ? "Current bid" : "Starting bid"}</p>
-          <p className="serif text-4xl md:text-5xl mt-1">{formatINR(live.currentPrice)}</p>
+          <p key={live.currentPrice} className={`serif text-4xl md:text-5xl mt-1 inline-block origin-left ${live.currentPrice !== firstPrice ? "price-bump" : ""}`} aria-live="polite">
+            {formatINR(live.currentPrice)}
+          </p>
           <p className="text-xs text-muted mt-1.5">+ ~{formatINR(shippingEstimate)} shipping if shipped · paid by buyer</p>
         </div>
         <div className={`badge !py-1.5 !px-3 ${isLive ? "badge-brand" : ""}`}>
@@ -126,7 +135,7 @@ export function BidPanel({
                 required
               />
             </div>
-            <button className="btn btn-primary" disabled={pending}>
+            <button ref={bidButton} className="btn btn-primary" disabled={pending}>
               {pending ? <Loader2 className="w-4 h-4 animate-spin" aria-label="Placing bid" /> : <><Gavel className="w-4 h-4" aria-hidden /> Bid</>}
             </button>
           </div>

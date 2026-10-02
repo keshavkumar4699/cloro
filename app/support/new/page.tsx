@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/session";
 import { TICKET_CATEGORIES } from "@/lib/catalog";
 import { ActionForm } from "@/components/action-form";
 import { createTicket } from "@/app/actions/support";
+import { ImageInput } from "@/components/image-input";
 
 export const metadata = { title: "New support ticket" };
 
@@ -53,8 +54,8 @@ export default async function NewTicketPage({ searchParams }: PageProps<"/suppor
             placeholder="Include dates, what was agreed, and what went wrong. For wrong or damaged items, mention if you have an unboxing video or call recording." />
         </div>
         <div>
-          <label className="label" htmlFor="attachments">Evidence (up to 4 images, 1.5 MB each)</label>
-          <input id="attachments" name="attachments" type="file" accept="image/jpeg,image/png,image/webp" multiple className="block w-full text-sm text-muted file:mr-3 file:rounded-full file:border file:border-line file:bg-white file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:border-ink" />
+          <p className="label">Evidence photos (up to 4)</p>
+          <ImageInput name="attachments" />
           <p className="text-xs text-muted mt-1">Screenshots, photos of the item or parcel, courier receipts. Keep videos ready — we&apos;ll ask if we need them.</p>
         </div>
       </ActionForm>

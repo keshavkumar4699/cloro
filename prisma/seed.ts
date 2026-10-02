@@ -1,4 +1,5 @@
-// Seeds an admin account, a few verified members and sample live lots for local development.
+// Development only: an admin, a few verified members and sample live items.
+// In production, sign in with Google and run `npm run make-admin -- you@gmail.com` instead.
 import { PrismaClient } from "@prisma/client";
 
 const db = new PrismaClient();
@@ -7,6 +8,10 @@ const days = (n: number) => new Date(now.getTime() + n * 86400000);
 const verified = { onboardedAt: now, aadhaarVerifiedAt: now, dobSource: "AADHAAR" as const };
 
 async function main() {
+  if (process.env.NODE_ENV === "production") {
+    console.log("Seeding is for development. In production run: npm run make-admin -- you@gmail.com (after signing in once).");
+    return;
+  }
   const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@cloro.local";
   const admin = await db.user.upsert({
     where: { email: adminEmail },

@@ -52,6 +52,13 @@ A members-only auction house for Gen Z in India. Verified members list pre-loved
   - safety banners in chat
   - meetup and shipping checklists
   - a help centre with a safety guide
+- **Saved items:** a heart on every item, a Saved list in My Cloro, and an alert an hour before a saved auction ends.
+- **SEO:**
+  - Category landing pages (`/c/sneakers`, `/c/clothes`, …) and a `/sell` page written for "sell old stuff online" style searches.
+  - A sitemap, robots.txt and an installable web-app manifest.
+  - Structured data for Google: Product, FAQ, breadcrumbs, and site search.
+  - Share images for social links.
+- **Account deletion** from My Cloro (DPDP Act right to erasure).
 - **In-app alerts only**, with no email or SMS. Opening an alert marks it read, and success messages appear as toasts.
 - **Safety nets:**
   - Banned or frozen bidders are skipped when an item is offered.
@@ -97,13 +104,14 @@ cp .env.example .env              # then set DATABASE_URL, AUTH_SECRET (npx auth
                                   # for local testing also set DEV_LOGIN=true and AADHAAR_ALLOW_UNSIGNED=true
 npm install
 npx prisma migrate dev
-npm run db:seed                   # admin@cloro.local + 3 verified members + sample lots
+npm run db:seed                   # development only: admin@cloro.local + 3 verified members + sample items
 npm run dev
 ```
 
 With `DEV_LOGIN=true`, `/signin` also shows a developer login that takes a name and email. It is ignored in production.
 
-Sign in as `admin@cloro.local` to open the support desk at `/admin`. To make someone a moderator, go to Admin → Members and change their role.
+Sign in as `admin@cloro.local` to open the support desk at `/admin`. To make someone a moderator, open their member file under Desk → Members and change their role.
+In production, sign in once with Google and run `npm run make-admin -- you@gmail.com` (see DEPLOY.md).
 
 Checks:
 
@@ -113,21 +121,15 @@ npm run typecheck
 npm test          # unit tests plus auction integration tests (needs the database)
 ```
 
-## Going live checklist
+## Going live
 
-1. **Google OAuth client.** Set the redirect URI to `<AUTH_URL>/api/auth/callback/google` and enable the People API.
-   - The `user.birthday.read` scope is a *sensitive* scope, so Google has to verify the app before other users can grant it.
-   - Until then, members are asked for their date of birth once, and Aadhaar still decides their age.
-2. **UIDAI Secure QR public key.** Set `UIDAI_PUBLIC_KEY_PEM` to UIDAI's published signing certificate or key for Secure QR, and set `AADHAAR_ALLOW_UNSIGNED=false`.
-   - Set a long random `AADHAAR_HASH_SECRET` and never change it, or the duplicate-account check stops working.
-3. **Razorpay live keys** for the 24–30 listing pass.
-4. **Photo storage.** Set `STORAGE_DRIVER=s3` with R2 or S3 credentials. Local disk doesn't persist on most hosts.
-5. **Settlement cron.** Set `CRON_SECRET` and call `GET /api/cron/settle` every few minutes with `Authorization: Bearer <CRON_SECRET>`.
-   - Auctions also settle whenever a page is viewed, so the cron only makes sure alerts go out on time.
-6. **Legal review.** Before launch, have a lawyer review:
-   - privacy policy and terms, in particular DPDP Act 2023 duties for children's data, which Cloro handles with guardian consent and no tracking
-   - Aadhaar usage
-   - GST once listing-fee revenue grows
+See **[DEPLOY.md](DEPLOY.md)**: a step-by-step guide to running Cloro on one small server with Docker. It costs ₹0 on Oracle's free tier,
+or about ₹400–750/month on an Indian VPS, plus a domain. It covers HTTPS, backups, Google sign-in, Razorpay, monitoring and getting
+listed on Google.
+
+- `docker-compose.prod.yml`: PostgreSQL, the app, Caddy (automatic HTTPS), a 5-minute auction cron and nightly backups.
+- On start-up the app checks its settings and refuses to run in production if anything important is missing.
+- `GET /api/health` is for uptime monitors. `GET /api/cron/settle` (with `CRON_SECRET`) closes auctions, sends "ending soon" reminders and tidies old alerts.
 
 ## Project layout
 

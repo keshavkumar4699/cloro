@@ -39,8 +39,13 @@ export function verifyRazorpaySignature(orderId: string, paymentId: string, sign
 export async function completePassPayment(orderId: string, paymentId: string, userId: string) {
   await db.$transaction(async (tx) => {
     const payment = await tx.payment.findUnique({ where: { providerOrderId: orderId } });
-    if (!payment || payment.userId !== userId || payment.status === "PAID") return;
-    await tx.payment.update({ where: { id: payment.id }, data: { status: "PAID", providerPaymentId: paymentId, paidAt: new Date() } });
+    if (!payment || payment.userId !== userId) return;
+    // Atomic guard: the checkout callback and the webhook can arrive together; only one may extend the pass.
+    const { count } = await tx.payment.updateMany({
+      where: { id: payment.id, status: { not: "PAID" } },
+      data: { status: "PAID", providerPaymentId: paymentId, paidAt: new Date() },
+    });
+    if (!count) return;
     const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
     const from = user.listingPassUntil && user.listingPassUntil > new Date() ? user.listingPassUntil : new Date();
     await tx.user.update({

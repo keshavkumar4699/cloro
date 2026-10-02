@@ -225,6 +225,169 @@ h3,
   }
 }
 
+/* Long-form text (legal and info pages) */
+.prose-cloro {
+  line-height: 1.75;
+  color: var(--color-ink-soft);
+}
+.prose-cloro h2 {
+  font-size: 1.5rem;
+  color: var(--color-ink);
+  margin: 2.2rem 0 0.6rem;
+}
+.prose-cloro p,
+.prose-cloro ul {
+  margin: 0.7rem 0;
+}
+.prose-cloro ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+}
+.prose-cloro li {
+  margin: 0.3rem 0;
+}
+.prose-cloro a {
+  text-decoration: underline;
+  text-decoration-color: rgb(184 135 59 / 0.5);
+  text-underline-offset: 3px;
+}
+
+/* ---------- Motion ---------- */
+
+.reveal-pending {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.reveal-pending.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* Soft floating colour blobs behind heroes */
+.blob {
+  border-radius: 999px;
+  filter: blur(60px);
+  opacity: 0.75;
+  animation: blob-drift 14s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.blob-gold {
+  background: radial-gradient(circle at 30% 30%, #f6d9a8, #e8b9a0 60%, transparent 70%);
+}
+.blob-brand {
+  background: radial-gradient(circle at 60% 40%, #bfe3d3, #c9d6f2 60%, transparent 70%);
+  animation-duration: 18s;
+}
+.blob-pink {
+  background: radial-gradient(circle at 50% 50%, #ffc8d9, #f7d5ff 60%, transparent 70%);
+  animation-duration: 16s;
+}
+@keyframes blob-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -20px) scale(1.08); }
+  100% { transform: translate(-20px, 25px) scale(0.95); }
+}
+
+.float-slow {
+  animation: float 6s ease-in-out infinite;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-14px) rotate(3deg); }
+}
+
+/* Gold shimmer across a word */
+.text-shimmer {
+  background: linear-gradient(100deg, var(--color-gold-dark) 20%, #e8c27a 40%, var(--color-gold) 60%, var(--color-gold-dark) 80%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 5s linear infinite;
+}
+@keyframes shimmer {
+  to { background-position: -250% 0; }
+}
+
+/* Breathing glow on the main call to action */
+.btn-glow {
+  animation: glow 2.8s ease-in-out infinite;
+}
+@keyframes glow {
+  0%, 100% { box-shadow: 0 6px 16px -8px rgb(14 74 59 / 0.6), 0 0 0 0 rgb(14 74 59 / 0.25); }
+  50% { box-shadow: 0 6px 16px -8px rgb(14 74 59 / 0.6), 0 0 0 10px rgb(14 74 59 / 0); }
+}
+
+.hover-lift {
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lift);
+}
+
+/* Infinite scrolling ribbon */
+.marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee 32s linear infinite;
+}
+.marquee:hover {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  to { transform: translateX(-50%); }
+}
+
+/* Price ticks up when a new bid lands */
+.price-bump {
+  animation: bump 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+@keyframes bump {
+  0% { transform: scale(1); color: inherit; }
+  35% { transform: scale(1.12); color: var(--color-brand); }
+  100% { transform: scale(1); }
+}
+
+/* Live dot */
+.live-dot {
+  position: relative;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #e5484d;
+}
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #e5484d;
+  animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes ping {
+  75%, 100% { transform: scale(2.4); opacity: 0; }
+}
+
+.heart-pop {
+  animation: heart 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.6);
+}
+@keyframes heart {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-ivory) 25%, #fbf5ec 50%, var(--color-ivory) 75%);
+  background-size: 200% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+@keyframes skeleton {
+  to { background-position: -200% 0; }
+}
+
 .no-scrollbar {
   scrollbar-width: none;
 }
@@ -259,8 +422,14 @@ h3,
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .fade-in,
-  .toast-in {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .marquee {
     animation: none;
   }
 }

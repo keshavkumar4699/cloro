@@ -25,11 +25,13 @@ export function MobileNav({ signedIn }: { signedIn: boolean }) {
             <li key={t.href}>
               <Link href={href} className={`h-full flex flex-col items-center justify-center gap-0.5 text-[0.7rem] font-medium ${active ? "text-brand" : "text-muted"}`} aria-current={active ? "page" : undefined}>
                 {t.primary ? (
-                  <span className="w-11 h-11 -mt-5 rounded-full bg-brand text-white flex items-center justify-center shadow-lift">
+                  <span className="w-12 h-12 -mt-6 rounded-full bg-brand text-white flex items-center justify-center shadow-lift ring-4 ring-paper transition-transform active:scale-90">
                     <t.icon className="w-5 h-5" aria-hidden />
                   </span>
                 ) : (
-                  <t.icon className="w-5 h-5" aria-hidden />
+                  <span className={`px-4 py-1 rounded-full transition-all duration-300 ${active ? "bg-brand-soft scale-105" : "scale-100"}`}>
+                    <t.icon className="w-5 h-5" aria-hidden />
+                  </span>
                 )}
                 {t.label}
               </Link>
