@@ -1,0 +1,98 @@
+# Cloro production stack for one small server (2 vCPU / 2–4 GB RAM is plenty for 1,000+ members).
+#
+#   cp .env.example .env    # fill it in
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Services: PostgreSQL, a one-off migration job, the app, Caddy (HTTPS), a 5-minute cron and nightly backups.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cloro
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: cloro
+    # Modest memory settings that suit a 1–4 GB server.
+    command: postgres -c shared_buffers=256MB -c effective_cache_size=768MB -c max_connections=60 -c work_mem=4MB
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloro -d cloro"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Applies database migrations, then exits. Also used for admin scripts:
+  #   docker compose -f docker-compose.prod.yml run --rm migrate npm run make-admin -- you@gmail.com
+  migrate:
+    build: { context: ., target: builder }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://cloro:${POSTGRES_PASSWORD}@db:5432/cloro
+    command: npx prisma migrate deploy
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  app:
+    build: { context: ., target: runner }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://cloro:${POSTGRES_PASSWORD}@db:5432/cloro?connection_limit=20
+      NODE_OPTIONS: --max-old-space-size=768
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env, e.g. cloro.in}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+  cron:
+    image: alpine:3.20
+    restart: unless-stopped
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?set CRON_SECRET in .env}
+    volumes:
+      - ./deploy/cron.sh:/cron.sh:ro
+    command: sh /cron.sh
+    depends_on:
+      - app
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://cloro:${POSTGRES_PASSWORD}@db:5432/cloro
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      BACKUP_S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+    volumes:
+      - ./backups:/backups
+      - ./deploy/backup.sh:/backup.sh:ro
+    entrypoint: ["sh", "-c", "apk add --no-cache aws-cli >/dev/null 2>&1 || true; sh /backup.sh"]
+    depends_on:
+      db: { condition: service_healthy }
+
+volumes:
+  db-data:
+  uploads:
+  caddy-data:
+  caddy-config:

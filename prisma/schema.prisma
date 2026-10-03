@@ -1,0 +1,478 @@
+// Cloro data model. Money is stored as whole rupees (Int).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  MODERATOR
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  FROZEN
+  BANNED
+}
+
+enum DobSource {
+  GOOGLE
+  SELF
+  AADHAAR
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  role        Role          @default(USER)
+  status      AccountStatus @default(ACTIVE)
+  frozenUntil DateTime?
+
+  dob          DateTime?
+  dobSource    DobSource?
+  onboardedAt  DateTime?
+  city         String?
+  pincode      String?
+
+  // Aadhaar Secure QR verification. The full number and card image are never stored.
+  aadhaarVerifiedAt DateTime?
+  aadhaarName       String?
+  aadhaarLast4      String?
+  aadhaarHash       String?   @unique
+
+  // Guardian approval for 13–17 year olds.
+  guardianApprovedAt DateTime?
+  guardianEmail      String?
+
+  // Listing fee for 24–30 year olds.
+  freeListingUsed  Boolean   @default(false)
+  listingPassUntil DateTime?
+
+  deletedAt DateTime? // set when the member deletes their account (personal data is erased)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  listings          Listing[]         @relation("SellerListings")
+  bids              Bid[]
+  questions         Question[]
+  buyerDeals        Deal[]            @relation("BuyerDeals")
+  sellerDeals       Deal[]            @relation("SellerDeals")
+  conversations     Conversation[]    @relation("BidderConversations")
+  messages          Message[]
+  reviewsGiven      Review[]          @relation("ReviewsGiven")
+  reviewsReceived   Review[]          @relation("ReviewsReceived")
+  tickets           Ticket[]          @relation("TicketOwner")
+  ticketsAgainst    Ticket[]          @relation("TicketAgainst")
+  ticketsAssigned   Ticket[]          @relation("TicketAssignee")
+  ticketMessages    TicketMessage[]
+  strikes           Strike[]          @relation("StrikeUser")
+  strikesProposed   Strike[]          @relation("StrikeProposer")
+  strikesConfirmed  Strike[]          @relation("StrikeConfirmer")
+  notifications     Notification[]
+  guardianRequests  GuardianRequest[] @relation("GuardianMinor")
+  guardianApprovals GuardianRequest[] @relation("GuardianApprover")
+  payments          Payment[]
+  blocksMade        Block[]           @relation("Blocker")
+  blocksReceived    Block[]           @relation("Blocked")
+  auditLogs         AuditLog[]
+  staffNotesAbout   StaffNote[]       @relation("NoteSubject")
+  watches           Watch[]
+  staffNotesWritten StaffNote[]       @relation("NoteAuthor")
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model GuardianRequest {
+  id           String    @id @default(cuid())
+  token        String    @unique
+  minorId      String
+  minor        User      @relation("GuardianMinor", fields: [minorId], references: [id], onDelete: Cascade)
+  guardianId   String?
+  guardian     User?     @relation("GuardianApprover", fields: [guardianId], references: [id])
+  relationship String?
+  status       String    @default("PENDING") // PENDING | APPROVED | DECLINED
+  createdAt    DateTime  @default(now())
+  decidedAt    DateTime?
+}
+
+enum ListingStatus {
+  LIVE
+  ENDED // auction finished, deal in progress or reserve not met
+  SOLD
+  UNSOLD
+  CANCELLED
+}
+
+model Listing {
+  id          String        @id @default(cuid())
+  sellerId    String
+  seller      User          @relation("SellerListings", fields: [sellerId], references: [id])
+  title       String
+  description String        @db.Text
+  category    String
+  brand       String?
+  condition   String
+  size        String
+  sizeSystem  String
+  measurements Json         @default("{}")
+
+  startPrice    Int
+  reservePrice  Int?
+  currentPrice  Int
+  bidCount      Int      @default(0)
+  endsAt        DateTime
+  originalEndsAt DateTime
+  status        ListingStatus @default(LIVE)
+  reserveMet    Boolean  @default(false)
+
+  shippingEstimate Int
+  city             String
+  pincode          String
+  meetupPossible   Boolean @default(true)
+
+  hasBill Boolean @default(false)
+  hasBox  Boolean @default(false)
+  hasTags Boolean @default(false)
+  curated Boolean @default(false)
+  removedReason String? // set when staff remove the item
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  images        ListingImage[]
+  bids          Bid[]
+  questions     Question[]
+  conversations Conversation[]
+  deals         Deal[]
+  tickets       Ticket[]
+  watchers      Watch[]
+
+  @@index([status, endsAt])
+  @@index([status, createdAt])
+  @@index([status, currentPrice])
+  @@index([status, curated])
+  @@index([category, status])
+  @@index([sellerId, createdAt])
+}
+
+model ListingImage {
+  id        String  @id @default(cuid())
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  url       String
+  position  Int
+  @@index([listingId, position])
+}
+
+model Bid {
+  id        String   @id @default(cuid())
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidderId  String
+  bidder    User     @relation(fields: [bidderId], references: [id])
+  amount    Int
+  createdAt DateTime @default(now())
+
+  @@index([listingId, amount])
+  @@index([bidderId, createdAt])
+}
+
+model Question {
+  id         String    @id @default(cuid())
+  listingId  String
+  listing    Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  askerId    String
+  asker      User      @relation(fields: [askerId], references: [id])
+  body       String    @db.Text
+  answer     String?   @db.Text
+  answeredAt DateTime?
+  hidden     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  @@index([listingId, createdAt])
+  @@index([askerId, createdAt])
+}
+
+// Private chat between a listing's seller and one bidder.
+model Conversation {
+  id        String    @id @default(cuid())
+  listingId String
+  listing   Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidderId  String
+  bidder    User      @relation("BidderConversations", fields: [bidderId], references: [id])
+  createdAt DateTime  @default(now())
+  messages  Message[]
+
+  @@unique([listingId, bidderId])
+  @@index([bidderId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id])
+  body           String       @db.Text
+  flagged        Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+enum DealStatus {
+  OFFERED
+  ACCEPTED
+  COMPLETED
+  DECLINED
+  EXPIRED
+  CANCELLED
+}
+
+model Deal {
+  id        String     @id @default(cuid())
+  listingId String
+  listing   Listing    @relation(fields: [listingId], references: [id])
+  buyerId   String
+  buyer     User       @relation("BuyerDeals", fields: [buyerId], references: [id])
+  sellerId  String
+  seller    User       @relation("SellerDeals", fields: [sellerId], references: [id])
+  amount    Int
+  rank      Int        // 1 = highest bidder, 2 = runner-up, ...
+  status    DealStatus @default(OFFERED)
+  respondBy DateTime
+  method    String?    // MEETUP | SHIP
+  trackingInfo    String?
+  buyerDoneAt     DateTime?
+  sellerDoneAt    DateTime?
+  cancelReason    String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  reviews Review[]
+  tickets Ticket[]
+
+  @@index([listingId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status, respondBy])
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  dealId     String
+  deal       Deal     @relation(fields: [dealId], references: [id])
+  reviewerId String
+  reviewer   User     @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  revieweeId String
+  reviewee   User     @relation("ReviewsReceived", fields: [revieweeId], references: [id])
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  @@unique([dealId, reviewerId])
+  @@index([revieweeId])
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  AWAITING_USER
+  RESOLVED
+  CLOSED
+}
+
+model Ticket {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation("TicketOwner", fields: [userId], references: [id])
+  againstId    String?
+  against      User?        @relation("TicketAgainst", fields: [againstId], references: [id])
+  dealId       String?
+  deal         Deal?        @relation(fields: [dealId], references: [id])
+  listingId    String?
+  listing      Listing?     @relation(fields: [listingId], references: [id])
+  conversationId String?
+  againstInvitedAt DateTime? // the other party can see and reply once invited by a moderator
+  category     String
+  subject      String
+  status       TicketStatus @default(OPEN)
+  priority     String       @default("NORMAL") // NORMAL | HIGH | URGENT
+  assignedToId String?
+  assignedTo   User?        @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  resolution   String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  messages TicketMessage[]
+  strikes  Strike[]
+
+  @@index([status, priority])
+  @@index([userId, createdAt])
+  @@index([againstId])
+}
+
+model TicketMessage {
+  id          String   @id @default(cuid())
+  ticketId    String
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  body        String   @db.Text
+  internal    Boolean  @default(false)
+  attachments String[]
+  createdAt   DateTime @default(now())
+}
+
+enum StrikeStatus {
+  PROPOSED
+  CONFIRMED
+  REJECTED
+  OVERTURNED
+}
+
+model Strike {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation("StrikeUser", fields: [userId], references: [id])
+  ticketId      String?
+  ticket        Ticket?      @relation(fields: [ticketId], references: [id])
+  reason        String       @db.Text
+  fraud         Boolean      @default(false)
+  status        StrikeStatus @default(PROPOSED)
+  proposedById  String
+  proposedBy    User         @relation("StrikeProposer", fields: [proposedById], references: [id])
+  confirmedById String?
+  confirmedBy   User?        @relation("StrikeConfirmer", fields: [confirmedById], references: [id])
+  appealText    String?      @db.Text
+  appealedAt    DateTime?
+  createdAt     DateTime     @default(now())
+  confirmedAt   DateTime?
+  expiresAt     DateTime?
+  @@index([userId, status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+}
+
+model Payment {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  amount          Int
+  provider        String   // mock | razorpay
+  providerOrderId String   @unique
+  providerPaymentId String?
+  status          String   @default("CREATED") // CREATED | PAID | FAILED
+  createdAt       DateTime @default(now())
+  paidAt          DateTime?
+  @@index([userId])
+}
+
+model Block {
+  blockerId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  actor     User     @relation(fields: [actorId], references: [id])
+  action    String
+  target    String?
+  details   String?  @db.Text
+  createdAt DateTime @default(now())
+  @@index([actorId, action, createdAt])
+  @@index([createdAt])
+}
+
+// Private notes staff keep about a member (never shown to the member).
+model StaffNote {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("NoteSubject", fields: [userId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("NoteAuthor", fields: [authorId], references: [id])
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// A member saving ("hearting") an item to follow it.
+model Watch {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  remindedAt DateTime? // "ending soon" alert sent
+  createdAt DateTime @default(now())
+
+  @@id([userId, listingId])
+  @@index([listingId])
+}
